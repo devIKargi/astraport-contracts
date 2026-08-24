@@ -71,6 +71,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "astraport-governance"
+version = "0.1.0"
+dependencies = [
+ "astraport-audit",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "astraport-pricefeed"
 version = "0.1.0"
 dependencies = [
@@ -101,7 +109,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "astraport-valuation"
+name = "astraport-versioning"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
