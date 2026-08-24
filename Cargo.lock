@@ -43,9 +43,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "astraport-emergency"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "astraport-events"
 version = "0.1.0"
 dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "astraport-fee"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "astraport-gamification"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
+name = "astraport-governance"
+version = "0.1.0"
+dependencies = [
+ "astraport-audit",
  "soroban-sdk",
 ]
 
@@ -73,14 +102,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "astraport-versioning"
+name = "astraport-valuation"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
-name = "astraport-valuation"
+name = "astraport-versioning"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
