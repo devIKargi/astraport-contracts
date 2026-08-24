@@ -163,7 +163,7 @@ impl PenaltyCalculator {
         }
         // If elapsed >= total, the lock has matured — apply end penalty.
         if elapsed_seconds >= total_lock_seconds {
-            return Ok(config.penalty_end_bps.max(0).min(MAX_BPS));
+            return Ok(config.penalty_end_bps.clamp(0, MAX_BPS));
         }
 
         let start = config.penalty_start_bps;
@@ -182,18 +182,13 @@ impl PenaltyCalculator {
             }
         };
 
-        Ok(bps.max(0).min(MAX_BPS))
+        Ok(bps.clamp(0, MAX_BPS))
     }
 
     /// Linear interpolation between `start` and `end`.
     ///
     /// `bps = start + (end - start) * elapsed / total`
-    fn linear_decay(
-        start: i128,
-        end: i128,
-        elapsed: u64,
-        total: u64,
-    ) -> Result<i128, MathError> {
+    fn linear_decay(start: i128, end: i128, elapsed: u64, total: u64) -> Result<i128, MathError> {
         // progress = elapsed / total  (fixed-point)
         let progress = fp::div(elapsed as i128, total as i128)?;
         let delta = end - start; // can be negative if end < start (normal case)
@@ -317,14 +312,11 @@ impl EmergencyUnstakeExecutor {
         let now = env.ledger().timestamp();
 
         // --- load config --------------------------------------------------
-        let config: EmergencyUnstakeConfig = match env
-            .storage()
-            .persistent()
-            .get(&EmergencyDataKey::Config)
-        {
-            Some(c) => c,
-            None => return Err(crate::Error::EmergencyConfigNotInitialized),
-        };
+        let config: EmergencyUnstakeConfig =
+            match env.storage().persistent().get(&EmergencyDataKey::Config) {
+                Some(c) => c,
+                None => return Err(crate::Error::EmergencyConfigNotInitialized),
+            };
 
         if !config.enabled {
             return Err(crate::Error::EmergencyUnstakeDisabled);
@@ -350,12 +342,9 @@ impl EmergencyUnstakeExecutor {
         let total_lock_seconds = unlock_ts.saturating_sub(lock_start_ts);
         let elapsed = now.saturating_sub(lock_start_ts);
 
-        let penalty_bps = PenaltyCalculator::compute_penalty_bps(
-            &config,
-            elapsed,
-            total_lock_seconds,
-        )
-        .map_err(|_| crate::Error::InvalidEmergencyUnstakeAmount)?;
+        let penalty_bps =
+            PenaltyCalculator::compute_penalty_bps(&config, elapsed, total_lock_seconds)
+                .map_err(|_| crate::Error::InvalidEmergencyUnstakeAmount)?;
 
         let (penalty_amount, amount_returned) =
             PenaltyCalculator::apply_penalty(amount, penalty_bps)
@@ -410,10 +399,8 @@ impl EmergencyUnstakeExecutor {
         }
 
         // --- emit unstake event ------------------------------------------
-        env.events().publish(
-            (symbol_short!("EMRGUNSTK"), staker.clone()),
-            record.clone(),
-        );
+        env.events()
+            .publish((symbol_short!("EMRGUNSTK"), staker.clone()), record.clone());
 
         Ok(record)
     }
@@ -447,9 +434,7 @@ pub struct EmergencyUnstakeQuery;
 impl EmergencyUnstakeQuery {
     /// Load the contract's [`EmergencyUnstakeConfig`], if any.
     pub fn config(env: &Env) -> Option<EmergencyUnstakeConfig> {
-        env.storage()
-            .persistent()
-            .get(&EmergencyDataKey::Config)
+        env.storage().persistent().get(&EmergencyDataKey::Config)
     }
 
     /// Return the ledger timestamp after which `staker` may emergency-unstake
@@ -477,11 +462,7 @@ impl EmergencyUnstakeQuery {
 
     /// Preview the penalty basis points for a hypothetical emergency unstake
     /// without touching storage.
-    pub fn preview_penalty_bps(
-        env: &Env,
-        lock_start_ts: u64,
-        unlock_ts: u64,
-    ) -> Option<i128> {
+    pub fn preview_penalty_bps(env: &Env, lock_start_ts: u64, unlock_ts: u64) -> Option<i128> {
         let config: EmergencyUnstakeConfig =
             env.storage().persistent().get(&EmergencyDataKey::Config)?;
         let now = env.ledger().timestamp();
@@ -526,8 +507,7 @@ mod tests {
     #[test]
     fn linear_start_penalty_at_elapsed_zero() {
         let cfg = test_config(3000, 500, PenaltyDecayFunction::Linear);
-        let bps =
-            PenaltyCalculator::compute_penalty_bps(&cfg, 0, 30 * 24 * 3600).unwrap();
+        let bps = PenaltyCalculator::compute_penalty_bps(&cfg, 0, 30 * 24 * 3600).unwrap();
         assert_eq!(bps, 3000, "at t=0, penalty must equal start");
     }
 
@@ -544,12 +524,16 @@ mod tests {
         // Midpoint of [3000, 500] should be (3000+500)/2 = 1750.
         let cfg = test_config(3000, 500, PenaltyDecayFunction::Linear);
         let total = 30u64 * 24 * 3600;
-        let bps =
-            PenaltyCalculator::compute_penalty_bps(&cfg, total / 2, total).unwrap();
+        let bps = PenaltyCalculator::compute_penalty_bps(&cfg, total / 2, total).unwrap();
         // tolerance of ±5 bps for fixed-point rounding
         let expected = 1750i128;
         let diff = (bps - expected).abs();
-        assert!(diff <= 5, "mid-point linear penalty {} != {}", bps, expected);
+        assert!(
+            diff <= 5,
+            "mid-point linear penalty {} != {}",
+            bps,
+            expected
+        );
     }
 
     #[test]
@@ -559,8 +543,7 @@ mod tests {
         let mut prev = MAX_BPS;
         for pct in [0u64, 10, 25, 50, 75, 90, 100] {
             let elapsed = total * pct / 100;
-            let bps =
-                PenaltyCalculator::compute_penalty_bps(&cfg, elapsed, total).unwrap();
+            let bps = PenaltyCalculator::compute_penalty_bps(&cfg, elapsed, total).unwrap();
             assert!(
                 bps <= prev,
                 "penalty not decreasing at {}%: prev={}, now={}",
@@ -577,8 +560,7 @@ mod tests {
     #[test]
     fn exponential_start_penalty_at_elapsed_zero() {
         let cfg = test_config(3000, 500, PenaltyDecayFunction::Exponential);
-        let bps =
-            PenaltyCalculator::compute_penalty_bps(&cfg, 0, 30 * 24 * 3600).unwrap();
+        let bps = PenaltyCalculator::compute_penalty_bps(&cfg, 0, 30 * 24 * 3600).unwrap();
         assert_eq!(bps, 3000);
     }
 
@@ -627,8 +609,7 @@ mod tests {
         let mut prev = MAX_BPS;
         for pct in [0u64, 10, 25, 50, 75, 90, 100] {
             let elapsed = total * pct / 100;
-            let bps =
-                PenaltyCalculator::compute_penalty_bps(&cfg, elapsed, total).unwrap();
+            let bps = PenaltyCalculator::compute_penalty_bps(&cfg, elapsed, total).unwrap();
             assert!(
                 bps <= prev,
                 "exp penalty not decreasing at {}%: prev={}, now={}",
@@ -651,8 +632,7 @@ mod tests {
 
     #[test]
     fn apply_full_penalty_returns_zero_net() {
-        let (penalty, net) =
-            PenaltyCalculator::apply_penalty(1_000_000, MAX_BPS).unwrap();
+        let (penalty, net) = PenaltyCalculator::apply_penalty(1_000_000, MAX_BPS).unwrap();
         assert_eq!(penalty, 1_000_000);
         assert_eq!(net, 0);
     }
@@ -660,8 +640,7 @@ mod tests {
     #[test]
     fn apply_ten_percent_penalty() {
         // 1000 bps = 10%. On 1_000_000 -> penalty=100_000, net=900_000.
-        let (penalty, net) =
-            PenaltyCalculator::apply_penalty(1_000_000, 1_000).unwrap();
+        let (penalty, net) = PenaltyCalculator::apply_penalty(1_000_000, 1_000).unwrap();
         assert_eq!(penalty, 100_000);
         assert_eq!(net, 900_000);
     }
@@ -669,8 +648,7 @@ mod tests {
     #[test]
     fn apply_penalty_is_exact_on_round_number() {
         // 2500 bps = 25%. On 8_000 -> penalty=2_000, net=6_000.
-        let (penalty, net) =
-            PenaltyCalculator::apply_penalty(8_000, 2_500).unwrap();
+        let (penalty, net) = PenaltyCalculator::apply_penalty(8_000, 2_500).unwrap();
         assert_eq!(penalty, 2_000);
         assert_eq!(net, 6_000);
     }
@@ -682,8 +660,7 @@ mod tests {
         let cfg = test_config(2500, 100, PenaltyDecayFunction::Custom);
         let total = 30u64 * 24 * 3600;
         for elapsed in [0u64, total / 4, total / 2, total * 3 / 4] {
-            let bps =
-                PenaltyCalculator::compute_penalty_bps(&cfg, elapsed, total).unwrap();
+            let bps = PenaltyCalculator::compute_penalty_bps(&cfg, elapsed, total).unwrap();
             assert_eq!(bps, 2500, "custom decay should always return start_bps");
         }
     }
@@ -693,8 +670,7 @@ mod tests {
     #[test]
     fn penalty_clamped_to_max_bps() {
         let cfg = test_config(20_000, 0, PenaltyDecayFunction::Linear); // out-of-range start
-        let bps =
-            PenaltyCalculator::compute_penalty_bps(&cfg, 0, 86_400).unwrap();
+        let bps = PenaltyCalculator::compute_penalty_bps(&cfg, 0, 86_400).unwrap();
         assert_eq!(bps, MAX_BPS, "penalty must be clamped at MAX_BPS");
     }
 
@@ -702,8 +678,7 @@ mod tests {
     fn penalty_clamped_to_zero() {
         let cfg = test_config(1000, -500, PenaltyDecayFunction::Linear); // negative end
         let total = 86_400u64;
-        let bps =
-            PenaltyCalculator::compute_penalty_bps(&cfg, total, total).unwrap();
+        let bps = PenaltyCalculator::compute_penalty_bps(&cfg, total, total).unwrap();
         assert_eq!(bps, 0, "penalty must be clamped at 0");
     }
 }

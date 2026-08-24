@@ -106,10 +106,8 @@ impl LogQuery {
         if self.filter_event_type && entry.event_type != self.event_type {
             return false;
         }
-        if self.filter_actor {
-            if entry.actor.to_string() != self.actor.to_string() {
-                return false;
-            }
+        if self.filter_actor && entry.actor.to_string() != self.actor.to_string() {
+            return false;
         }
         if self.filter_portfolio && entry.portfolio != self.portfolio {
             return false;

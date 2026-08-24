@@ -254,16 +254,14 @@ impl<'a> AlertMonitor<'a> {
     /// Remove the threshold at position `index` (0-based) in the ordered list.
     ///
     /// Panics if `index` is out of range. Returns the updated config.
-    pub fn remove_threshold(
-        &self,
-        staker: &Address,
-        asset: &Symbol,
-        index: u32,
-    ) -> AlertConfig {
+    pub fn remove_threshold(&self, staker: &Address, asset: &Symbol, index: u32) -> AlertConfig {
         let mut config = self
             .get_config(staker, asset)
             .expect("no alert config for this pair");
-        assert!((index as usize) < config.thresholds.len() as usize, "threshold index out of range");
+        assert!(
+            (index as usize) < config.thresholds.len() as usize,
+            "threshold index out of range"
+        );
 
         // Rebuild the vec without the element at `index`.
         let mut updated: Vec<AlertThreshold> = Vec::new(self.env);
@@ -331,7 +329,8 @@ impl<'a> AlertMonitor<'a> {
                 continue;
             }
 
-            let observed = self.observed_value(&t.kind, current_balance, current_apr, unlock_ts, now);
+            let observed =
+                self.observed_value(&t.kind, current_balance, current_apr, unlock_ts, now);
             if self.threshold_breached(&t, observed, now, unlock_ts) {
                 self.emit_and_record(staker, asset, &t, observed, now);
                 fired += 1;
@@ -459,12 +458,7 @@ impl<'a> AlertMonitor<'a> {
     ///
     /// Acknowledged alerts are still retained for audit purposes; only the
     /// `acknowledged` flag is flipped. Panics if `index` is out of range.
-    pub fn acknowledge(
-        &self,
-        staker: &Address,
-        asset: &Symbol,
-        index: u32,
-    ) {
+    pub fn acknowledge(&self, staker: &Address, asset: &Symbol, index: u32) {
         let key = AlertDataKey::History(staker.clone(), asset.clone());
         let log: Vec<AlertHistoryEntry> = self
             .env
@@ -473,7 +467,10 @@ impl<'a> AlertMonitor<'a> {
             .get(&key)
             .unwrap_or_else(|| Vec::new(self.env));
 
-        assert!((index as usize) < log.len() as usize, "alert index out of range");
+        assert!(
+            (index as usize) < log.len() as usize,
+            "alert index out of range"
+        );
 
         let mut entry = log.get(index).unwrap();
         entry.acknowledged = true;
@@ -491,11 +488,7 @@ impl<'a> AlertMonitor<'a> {
     }
 
     /// Return only the unacknowledged alerts for a pair.
-    pub fn pending_alerts(
-        &self,
-        staker: &Address,
-        asset: &Symbol,
-    ) -> Vec<AlertHistoryEntry> {
+    pub fn pending_alerts(&self, staker: &Address, asset: &Symbol) -> Vec<AlertHistoryEntry> {
         let all = self.history(staker, asset);
         let mut pending: Vec<AlertHistoryEntry> = Vec::new(self.env);
         for i in 0..all.len() {

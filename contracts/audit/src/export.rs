@@ -29,9 +29,9 @@ fn symbol_to_rust(s: &soroban_sdk::Symbol) -> RustString {
 
 /// CSV header shared by all exports. Column order is part of the contract
 /// protocol and is pinned by tests.
-pub const CSV_HEADER: &str =
-    "seq,timestamp,event_type,actor,permissions,portfolio,outcome,detail";
+pub const CSV_HEADER: &str = "seq,timestamp,event_type,actor,permissions,portfolio,outcome,detail";
 
+#[allow(dead_code)]
 fn to_rust_str(s: &String) -> RustString {
     let len = s.len() as usize;
     if len == 0 {
@@ -43,6 +43,7 @@ fn to_rust_str(s: &String) -> RustString {
     RustString::from_utf8(buf[..slice_len].to_vec()).unwrap_or_default()
 }
 
+#[allow(dead_code)]
 fn symbol_to_rust_str(env: &Env, s: &Symbol) -> RustString {
     let soroban_str = String::from_val(env, &s.to_val());
     to_rust_str(&soroban_str)

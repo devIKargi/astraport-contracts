@@ -17,7 +17,7 @@
 use soroban_sdk::{Address, Env, Symbol, Vec};
 
 use crate::engine::YieldEngine;
-use crate::fixed_point::{self as fp, SCALE};
+use crate::fixed_point as fp;
 use crate::records::{
     AssetYieldRate, GraduatedUnlock, PortfolioSnapshot, StakeDataKey, StakingPosition,
     UnlockSchedule,
@@ -135,12 +135,7 @@ impl<'a> MultiAssetStaking<'a> {
     /// 5. Update / remove the position and the staker's asset list.
     ///
     /// Returns the remaining staked balance.
-    pub fn unstake(
-        &self,
-        staker: &Address,
-        asset: &Symbol,
-        amount: i128,
-    ) -> Result<i128, Error> {
+    pub fn unstake(&self, staker: &Address, asset: &Symbol, amount: i128) -> Result<i128, Error> {
         let balance_key = StakeDataKey::Balance(staker.clone(), asset.clone());
         let current: i128 = self
             .env
@@ -206,7 +201,7 @@ impl<'a> MultiAssetStaking<'a> {
     pub fn portfolio_snapshot(&self, staker: &Address) -> PortfolioSnapshot {
         let assets = self.staker_assets(staker);
         let engine = YieldEngine::new(self.env);
-        let now = self.env.ledger().timestamp();
+        let _now = self.env.ledger().timestamp();
 
         let mut total_principal: i128 = 0;
         let mut total_yield: i128 = 0;
@@ -217,9 +212,7 @@ impl<'a> MultiAssetStaking<'a> {
             let asset = assets.get(i).unwrap();
             if let Some(mut pos) = self.load_position(staker, &asset) {
                 // Read live yield from the engine (non-mutating).
-                let live_yield = engine
-                    .current_yield(staker, &asset)
-                    .unwrap_or(0);
+                let live_yield = engine.current_yield(staker, &asset).unwrap_or(0);
                 pos.accrued_yield = live_yield;
 
                 total_principal = total_principal.saturating_add(pos.principal);
@@ -284,9 +277,7 @@ impl<'a> MultiAssetStaking<'a> {
                     0
                 }
             }
-            UnlockSchedule::Graduated(g) => {
-                self.graduated_unlocked(pos.principal, g, now)
-            }
+            UnlockSchedule::Graduated(g) => self.graduated_unlocked(pos.principal, g, now),
         }
     }
 
@@ -296,12 +287,7 @@ impl<'a> MultiAssetStaking<'a> {
     /// `start_ts + k * interval_seconds`. Each tranche releases
     /// `tranche_pct_bps / 10_000` of the original principal. The final
     /// tranche unlocks any remainder, ensuring 100% eventually unlocks.
-    fn graduated_unlocked(
-        &self,
-        principal: i128,
-        g: &GraduatedUnlock,
-        now: u64,
-    ) -> i128 {
+    fn graduated_unlocked(&self, principal: i128, g: &GraduatedUnlock, now: u64) -> i128 {
         if now < g.start_ts || g.interval_seconds == 0 || g.tranche_pct_bps == 0 {
             return 0;
         }
@@ -326,10 +312,7 @@ impl<'a> MultiAssetStaking<'a> {
 
         // unlocked = principal * (tranches_done * bps) / 10_000
         // Use i128 arithmetic; principal is a raw token amount, not fixed-point.
-        principal
-            .saturating_mul(tranches_done)
-            .saturating_mul(bps)
-            / 10_000
+        principal.saturating_mul(tranches_done).saturating_mul(bps) / 10_000
     }
 
     // -----------------------------------------------------------------------

@@ -148,7 +148,7 @@ pub fn describe_permissions(env: &Env, perms: u32) -> Vec<Symbol> {
         out.push_back(symbol_short!("MNG_SCHED"));
     }
     if permission_contains(perms, CAN_EXECUTE_REBALANCE) {
-        out.push_back(symbol_short!("EXEC_REBAL"));
+        out.push_back(symbol_short!("EXEC_RBL"));
     }
     if permission_contains(perms, CAN_LIQUIDATE) {
         out.push_back(symbol_short!("LIQUIDATE"));

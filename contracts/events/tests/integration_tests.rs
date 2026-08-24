@@ -4,9 +4,7 @@ use soroban_sdk::{
     symbol_short, testutils::Address as _, vec as soroban_vec, Address, Bytes, Env, Map,
 };
 
-use astraport_events::{
-    EventsContract, EventsContractClient, PortfolioEventType,
-};
+use astraport_events::{EventsContract, EventsContractClient, PortfolioEventType};
 
 fn events_client(env: &Env) -> EventsContractClient<'_> {
     let id = env.register_contract(None, EventsContract);
@@ -100,9 +98,24 @@ fn test_multiple_subscribers_maintain_order() {
     assert_eq!(subs.get(2).unwrap().order_index, 2);
 
     let details = Map::new(&env);
-    client.emit_event(&portfolio_id, &PortfolioEventType::Rebalanced, &details, &Bytes::new(&env));
-    client.emit_event(&portfolio_id, &PortfolioEventType::ThresholdBreached, &details, &Bytes::new(&env));
-    client.emit_event(&portfolio_id, &PortfolioEventType::TradeExecuted, &details, &Bytes::new(&env));
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::Rebalanced,
+        &details,
+        &Bytes::new(&env),
+    );
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::ThresholdBreached,
+        &details,
+        &Bytes::new(&env),
+    );
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::TradeExecuted,
+        &details,
+        &Bytes::new(&env),
+    );
 
     let history = client.get_event_history(&portfolio_id);
     assert_eq!(history.len(), 3);
@@ -131,23 +144,44 @@ fn test_event_type_filtering() {
 
     let details = Map::new(&env);
 
-    client.emit_event(&portfolio_id, &PortfolioEventType::Rebalanced, &details, &Bytes::new(&env));
-    client.emit_event(&portfolio_id, &PortfolioEventType::TradeExecuted, &details, &Bytes::new(&env));
-    client.emit_event(&portfolio_id, &PortfolioEventType::BalanceChanged, &details, &Bytes::new(&env));
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::Rebalanced,
+        &details,
+        &Bytes::new(&env),
+    );
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::TradeExecuted,
+        &details,
+        &Bytes::new(&env),
+    );
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::BalanceChanged,
+        &details,
+        &Bytes::new(&env),
+    );
 
     let history = client.get_event_history(&portfolio_id);
     assert_eq!(history.len(), 3);
 
     assert_eq!(
-        client.get_events_by_type(&portfolio_id, &PortfolioEventType::Rebalanced).len(),
+        client
+            .get_events_by_type(&portfolio_id, &PortfolioEventType::Rebalanced)
+            .len(),
         1
     );
     assert_eq!(
-        client.get_events_by_type(&portfolio_id, &PortfolioEventType::TradeExecuted).len(),
+        client
+            .get_events_by_type(&portfolio_id, &PortfolioEventType::TradeExecuted)
+            .len(),
         1
     );
     assert_eq!(
-        client.get_events_by_type(&portfolio_id, &PortfolioEventType::BalanceChanged).len(),
+        client
+            .get_events_by_type(&portfolio_id, &PortfolioEventType::BalanceChanged)
+            .len(),
         1
     );
 }
@@ -162,7 +196,12 @@ fn test_time_range_query() {
     let details = Map::new(&env);
 
     for _ in 0..5 {
-        client.emit_event(&portfolio_id, &PortfolioEventType::Rebalanced, &details, &Bytes::new(&env));
+        client.emit_event(
+            &portfolio_id,
+            &PortfolioEventType::Rebalanced,
+            &details,
+            &Bytes::new(&env),
+        );
     }
 
     let all = client.get_events_by_time_range(&portfolio_id, &0, &100_000);
@@ -183,10 +222,20 @@ fn test_event_count_tracking() {
 
     assert_eq!(client.get_event_count(&portfolio_id), 0);
 
-    client.emit_event(&portfolio_id, &PortfolioEventType::Rebalanced, &details, &Bytes::new(&env));
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::Rebalanced,
+        &details,
+        &Bytes::new(&env),
+    );
     assert_eq!(client.get_event_count(&portfolio_id), 1);
 
-    client.emit_event(&portfolio_id, &PortfolioEventType::BalanceChanged, &details, &Bytes::new(&env));
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::BalanceChanged,
+        &details,
+        &Bytes::new(&env),
+    );
     assert_eq!(client.get_event_count(&portfolio_id), 2);
 }
 
@@ -220,7 +269,12 @@ fn test_cross_contract_event_triggers_ai_analysis() {
     client.subscribe(&portfolio_id, &subscriber, &soroban_vec![&env]);
 
     let details = Map::new(&env);
-    client.emit_event(&portfolio_id, &PortfolioEventType::Rebalanced, &details, &Bytes::new(&env));
+    client.emit_event(
+        &portfolio_id,
+        &PortfolioEventType::Rebalanced,
+        &details,
+        &Bytes::new(&env),
+    );
 
     let analyses = client.process_event(
         &portfolio_id,

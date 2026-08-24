@@ -13,9 +13,7 @@
 //! - [`validation`] — Staleness detection, anomaly detection, fallback resolution.
 //! - [`aggregation`] — Multi-oracle aggregation strategies (Median, TWAP, etc.).
 
-use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, Env, Symbol, Vec,
-};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol, Vec};
 
 pub mod aggregation;
 pub mod oracle;
@@ -123,15 +121,12 @@ impl PriceFeedContract {
 
         match OracleManager::register_provider(&env, provider.clone()) {
             Ok(id) => {
-                env.events().publish(
-                    (symbol_short!("ORC_ADD"), id.clone()),
-                    provider.name,
-                );
+                env.events()
+                    .publish((symbol_short!("ORC_ADD"), id.clone()), provider.name);
                 symbol_short!("ok")
             }
             Err(e) => {
-                env.events()
-                    .publish((symbol_short!("ORC_ERR"),), e as u32);
+                env.events().publish((symbol_short!("ORC_ERR"),), e as u32);
                 symbol_short!("err")
             }
         }
@@ -192,8 +187,7 @@ impl PriceFeedContract {
     /// from the oracle endpoint. The provider must be registered and active.
     pub fn submit_price(env: Env, data_point: PriceDataPoint) -> Symbol {
         // Verify the oracle is registered and active
-        if let Some(provider) = OracleManager::get_provider(&env, data_point.provider_id.clone())
-        {
+        if let Some(provider) = OracleManager::get_provider(&env, data_point.provider_id.clone()) {
             if !provider.is_active {
                 env.events().publish(
                     (symbol_short!("PX_ERR"), data_point.asset.clone()),
@@ -335,10 +329,7 @@ impl PriceFeedContract {
     }
 
     /// Batch fetch prices for multiple assets (gas optimization).
-    pub fn batch_get_prices(
-        env: Env,
-        requests: Vec<BatchPriceRequest>,
-    ) -> Vec<BatchPriceResponse> {
+    pub fn batch_get_prices(env: Env, requests: Vec<BatchPriceRequest>) -> Vec<BatchPriceResponse> {
         let mut responses = Vec::new(&env);
 
         for req in requests.iter() {
@@ -366,21 +357,14 @@ impl PriceFeedContract {
     /// Set a fallback price for an asset (admin only).
     ///
     /// Used for emergency situations when oracle data is unavailable.
-    pub fn set_fallback_price(
-        env: Env,
-        admin: Address,
-        asset: Symbol,
-        price: i128,
-    ) -> Symbol {
+    pub fn set_fallback_price(env: Env, admin: Address, asset: Symbol, price: i128) -> Symbol {
         admin.require_auth();
         Self::assert_admin(&env, &admin);
 
         price_validation::set_fallback_price(&env, asset.clone(), price);
 
-        env.events().publish(
-            (symbol_short!("FB_SET"), asset),
-            price,
-        );
+        env.events()
+            .publish((symbol_short!("FB_SET"), asset), price);
 
         symbol_short!("ok")
     }
@@ -464,8 +448,7 @@ impl PriceFeedContract {
                 .persistent()
                 .set(&PriceFeedDataKey::TrackedAssets, &assets);
 
-            env.events()
-                .publish((symbol_short!("ASSET_ADD"),), asset);
+            env.events().publish((symbol_short!("ASSET_ADD"),), asset);
         }
 
         symbol_short!("ok")
@@ -511,11 +494,7 @@ impl PriceFeedContract {
     }
 
     /// Check if a price is anomalous relative to a set of data points.
-    pub fn check_anomaly(
-        env: Env,
-        price: i128,
-        asset: Symbol,
-    ) -> bool {
+    pub fn check_anomaly(env: Env, price: i128, asset: Symbol) -> bool {
         let now = env.ledger().timestamp();
         let data_points = OracleManager::fetch_all_for_asset(&env, asset, now);
         match price_validation::calculate_median(&data_points) {
@@ -618,8 +597,7 @@ mod tests {
         let provider = make_provider("oracl1", "Oracle1", 5000);
         PriceFeedContract::register_oracle(env.clone(), admin.clone(), provider);
 
-        let result =
-            PriceFeedContract::remove_oracle(env.clone(), admin, symbol_short!("oracl1"));
+        let result = PriceFeedContract::remove_oracle(env.clone(), admin, symbol_short!("oracl1"));
         assert_eq!(result, symbol_short!("ok"));
 
         let retrieved = PriceFeedContract::get_oracle(env.clone(), symbol_short!("oracl1"));
@@ -749,7 +727,10 @@ mod tests {
         assert_eq!(responses.len(), 2);
         assert!(responses.get(0).unwrap().price.is_some());
         assert!(responses.get(1).unwrap().price.is_some());
-        assert_eq!(responses.get(0).unwrap().price.unwrap().price, 2000_00000000);
+        assert_eq!(
+            responses.get(0).unwrap().price.unwrap().price,
+            2000_00000000
+        );
         assert_eq!(
             responses.get(1).unwrap().price.unwrap().price,
             60000_00000000
@@ -826,8 +807,7 @@ mod tests {
             alert_on_anomaly: false,
         };
 
-        let result =
-            PriceFeedContract::set_validation_config(env.clone(), admin, config.clone());
+        let result = PriceFeedContract::set_validation_config(env.clone(), admin, config.clone());
         assert_eq!(result, symbol_short!("ok"));
 
         let retrieved = PriceFeedContract::get_validation_config(env);
@@ -906,35 +886,19 @@ mod tests {
     fn test_tracked_assets() {
         let (env, admin) = setup();
 
-        PriceFeedContract::add_tracked_asset(
-            env.clone(),
-            admin.clone(),
-            symbol_short!("ETH"),
-        );
-        PriceFeedContract::add_tracked_asset(
-            env.clone(),
-            admin.clone(),
-            symbol_short!("BTC"),
-        );
+        PriceFeedContract::add_tracked_asset(env.clone(), admin.clone(), symbol_short!("ETH"));
+        PriceFeedContract::add_tracked_asset(env.clone(), admin.clone(), symbol_short!("BTC"));
 
         let assets = PriceFeedContract::get_tracked_assets(env.clone());
         assert_eq!(assets.len(), 2);
 
         // Adding same asset again should not duplicate
-        PriceFeedContract::add_tracked_asset(
-            env.clone(),
-            admin.clone(),
-            symbol_short!("ETH"),
-        );
+        PriceFeedContract::add_tracked_asset(env.clone(), admin.clone(), symbol_short!("ETH"));
         let assets = PriceFeedContract::get_tracked_assets(env.clone());
         assert_eq!(assets.len(), 2);
 
         // Remove
-        PriceFeedContract::remove_tracked_asset(
-            env.clone(),
-            admin,
-            symbol_short!("ETH"),
-        );
+        PriceFeedContract::remove_tracked_asset(env.clone(), admin, symbol_short!("ETH"));
         let assets = PriceFeedContract::get_tracked_assets(env);
         assert_eq!(assets.len(), 1);
     }

@@ -18,9 +18,7 @@
 //! - [`performance`] — Pure-function fixed-point implementations of Sharpe
 //!   ratio, Sortino ratio, maximum drawdown, and time-weighted return.
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Env, Map, Symbol, Vec,
-};
+use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Env, Map, Symbol, Vec};
 
 pub mod performance;
 pub mod records;
@@ -281,7 +279,7 @@ impl ValuationContract {
             // Using fixed-point: (market_value * 10000 * SCALE) / (total_value * SCALE)
             // Simplifies to: market_value * 10000 / total_value
             let bps = if total_value > 0 {
-                let raw = (market_value as i128).checked_mul(10_000).unwrap_or(0) / total_value;
+                let raw = market_value.checked_mul(10_000).unwrap_or(0) / total_value;
                 raw.max(0) as u32
             } else {
                 0

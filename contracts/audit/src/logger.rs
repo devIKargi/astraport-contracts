@@ -71,10 +71,7 @@ impl<'a> AuditLogger<'a> {
     pub fn query(&self) -> Vec<AuditLog> {
         let fn_name = symbol_short!("query");
         let empty_args: Vec<soroban_sdk::Val> = Vec::new(self.env);
-        self.env.invoke_contract::<Vec<AuditLog>>(
-            &self.contract,
-            &fn_name,
-            empty_args,
-        )
+        self.env
+            .invoke_contract::<Vec<AuditLog>>(&self.contract, &fn_name, empty_args)
     }
 }

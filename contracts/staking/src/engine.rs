@@ -16,8 +16,8 @@ use soroban_sdk::{Address, Env, Symbol, Vec};
 use crate::compounding::YieldCalculator;
 use crate::fixed_point::MathError;
 use crate::records::{
-    CompoundingMode, DistributionSchedule, DistributionType, YieldDataKey,
-    YieldDistributionRecord, YieldHistoryEntry, YieldRecord,
+    CompoundingMode, DistributionSchedule, DistributionType, YieldDataKey, YieldDistributionRecord,
+    YieldHistoryEntry, YieldRecord,
 };
 
 /// Stateful engine coordinating yield accrual, history, and distributions.
@@ -314,7 +314,12 @@ impl<'a> YieldEngine<'a> {
     pub fn fund_reserve(&self, asset: &Symbol, amount: i128) -> i128 {
         assert!(amount > 0, "ReserveFundAmountMustBePositive");
         let key = YieldDataKey::ReserveBalance(asset.clone());
-        let current: i128 = self.env.storage().persistent().get(&key).unwrap_or_default();
+        let current: i128 = self
+            .env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_default();
         let new_balance = current
             .checked_add(amount)
             .expect("ReserveBalance overflow");
@@ -325,7 +330,11 @@ impl<'a> YieldEngine<'a> {
     /// Return the current yield reserve balance for an asset.
     pub fn reserve_balance(&self, asset: &Symbol) -> i128 {
         let key = YieldDataKey::ReserveBalance(asset.clone());
-        self.env.storage().persistent().get(&key).unwrap_or_default()
+        self.env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_default()
     }
 
     /// Withdraw from the yield reserve (admin-only caller verified in lib.rs).
@@ -335,13 +344,17 @@ impl<'a> YieldEngine<'a> {
     pub fn withdraw_reserve(&self, asset: &Symbol, amount: i128) -> i128 {
         assert!(amount > 0, "ReserveWithdrawAmountMustBePositive");
         let key = YieldDataKey::ReserveBalance(asset.clone());
-        let current: i128 = self.env.storage().persistent().get(&key).unwrap_or_default();
+        let current: i128 = self
+            .env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_default();
         assert!(current >= amount, "InsufficientReserve");
         let new_balance = current - amount;
         self.env.storage().persistent().set(&key, &new_balance);
         new_balance
     }
-
 
     // --- pause / unpause -----------------------------------------------
 
@@ -365,14 +378,8 @@ impl<'a> YieldEngine<'a> {
     // --- distribution history ------------------------------------------
 
     /// Append a [`YieldDistributionRecord`] to the per-pair history log.
-    pub fn record_distribution(
-        &self,
-        record: &YieldDistributionRecord,
-    ) {
-        let key = YieldDataKey::DistributionHistory(
-            record.staker.clone(),
-            record.asset.clone(),
-        );
+    pub fn record_distribution(&self, record: &YieldDistributionRecord) {
+        let key = YieldDataKey::DistributionHistory(record.staker.clone(), record.asset.clone());
         let mut log: Vec<YieldDistributionRecord> = self
             .env
             .storage()
@@ -544,11 +551,7 @@ impl<'a> YieldEngine<'a> {
     /// accrued yield (full claim, not partial).
     ///
     /// Returns a `Vec` of `(staker, claimed_amount)` pairs.
-    pub fn batch_claim(
-        &self,
-        stakers: &Vec<Address>,
-        asset: &Symbol,
-    ) -> Vec<(Address, i128)> {
+    pub fn batch_claim(&self, stakers: &Vec<Address>, asset: &Symbol) -> Vec<(Address, i128)> {
         let now = self.env.ledger().timestamp();
         let mut results: Vec<(Address, i128)> = Vec::new(self.env);
 
@@ -733,10 +736,7 @@ impl<'a> YieldEngine<'a> {
 
         // Persist updated reserve.
         if has_reserve {
-            self.env
-                .storage()
-                .persistent()
-                .set(&reserve_key, &reserve);
+            self.env.storage().persistent().set(&reserve_key, &reserve);
         }
 
         total

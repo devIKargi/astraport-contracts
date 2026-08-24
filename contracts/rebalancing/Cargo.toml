@@ -8,7 +8,7 @@ license.workspace = true
 [lib]
 
 [dependencies]
-soroban-sdk = { workspace = true }
+soroban-sdk = { workspace = true, features = ["testutils"] }
 astraport-audit = { path = "../audit" }
 
 [dev-dependencies]

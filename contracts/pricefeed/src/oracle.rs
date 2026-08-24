@@ -1,10 +1,9 @@
 //! Oracle provider management and price fetching logic.
 
-use soroban_sdk::{contractimpl, contracttype, symbol_short, Address, Env, Map, Symbol, Vec};
+use soroban_sdk::{symbol_short, Env, Map, Symbol, Vec};
 
 use crate::records::{
     OracleProvider, PriceDataPoint, PriceFeedDataKey, PriceFeedError, PriceStatus,
-    PRICE_PRECISION,
 };
 
 // ---------------------------------------------------------------------------
@@ -40,10 +39,7 @@ impl OracleManager {
     }
 
     /// Update an existing oracle provider's configuration.
-    pub fn update_provider(
-        env: &Env,
-        provider: OracleProvider,
-    ) -> Result<Symbol, PriceFeedError> {
+    pub fn update_provider(env: &Env, provider: OracleProvider) -> Result<Symbol, PriceFeedError> {
         let mut oracles: Map<Symbol, OracleProvider> = env
             .storage()
             .persistent()
@@ -159,16 +155,13 @@ impl OracleManager {
 
     /// Fetch prices from all active providers for a given asset.
     /// Returns only providers that have data and are not stale.
-    pub fn fetch_all_for_asset(
-        env: &Env,
-        asset: Symbol,
-        now: u64,
-    ) -> Vec<PriceDataPoint> {
+    pub fn fetch_all_for_asset(env: &Env, asset: Symbol, now: u64) -> Vec<PriceDataPoint> {
         let active = Self::get_active_providers(env);
         let mut results = Vec::new(env);
 
         for provider in active.iter() {
-            if let Some(mut dp) = Self::fetch_price(env, asset.clone(), provider.provider_id.clone())
+            if let Some(mut dp) =
+                Self::fetch_price(env, asset.clone(), provider.provider_id.clone())
             {
                 // Check staleness against provider-specific max_staleness
                 if now > 0 && dp.timestamp > 0 {

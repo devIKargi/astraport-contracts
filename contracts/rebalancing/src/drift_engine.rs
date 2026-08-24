@@ -103,7 +103,8 @@ impl DriftEngine {
 
         for (asset, current_weight) in current.allocations.iter() {
             if !target.allocations.contains_key(asset.clone()) {
-                let drift = Self::compute_asset_drift(asset.clone(), current_weight, 0, threshold_bps);
+                let drift =
+                    Self::compute_asset_drift(asset.clone(), current_weight, 0, threshold_bps);
                 total_assets += 1;
 
                 if drift.abs_drift_bps > max_drift_bps {
@@ -144,13 +145,8 @@ impl DriftEngine {
         current: &CurrentHoldings,
         threshold_bps: u32,
     ) -> (bool, u32) {
-        let report = Self::calculate_portfolio_drift(
-            env,
-            portfolio_id,
-            target,
-            current,
-            threshold_bps,
-        );
+        let report =
+            Self::calculate_portfolio_drift(env, portfolio_id, target, current, threshold_bps);
         let needs_rebalance = report.summary.assets_out_of_threshold > 0;
         (needs_rebalance, report.summary.assets_out_of_threshold)
     }
@@ -177,13 +173,8 @@ impl DriftEngine {
         constraints: &TradeConstraints,
         total_portfolio_value: i128,
     ) -> RebalancePlan {
-        let report = Self::calculate_portfolio_drift(
-            env,
-            portfolio_id,
-            target,
-            current,
-            threshold_bps,
-        );
+        let report =
+            Self::calculate_portfolio_drift(env, portfolio_id, target, current, threshold_bps);
 
         let mut sells = Vec::new(env);
         let mut buys = Vec::new(env);
@@ -231,7 +222,11 @@ impl DriftEngine {
 
         let sell_len = sells.len();
         let buy_len = buys.len();
-        let pairs = if sell_len < buy_len { sell_len } else { buy_len };
+        let pairs = if sell_len < buy_len {
+            sell_len
+        } else {
+            buy_len
+        };
 
         for i in 0..pairs {
             let (sell_asset, sell_amount, source_drift) = sells.get(i).unwrap();
@@ -337,7 +332,7 @@ impl DriftEngine {
             asset_count += 1;
         }
         if target_total != 10_000 {
-            issues.push_back(symbol_short!("bad_target"));
+            issues.push_back(symbol_short!("bad_tgt"));
         }
 
         // Check current holdings sum.
@@ -348,12 +343,12 @@ impl DriftEngine {
             current_asset_count += 1;
         }
         if current_total != 10_000 {
-            issues.push_back(symbol_short!("bad_current"));
+            issues.push_back(symbol_short!("bad_cur"));
         }
 
         // Check threshold.
         if threshold_bps > 10_000 {
-            issues.push_back(symbol_short!("bad_thresh"));
+            issues.push_back(symbol_short!("bad_thr"));
         }
 
         // Check asset count bounds.
@@ -384,13 +379,8 @@ impl DriftEngine {
         constraints: &TradeConstraints,
         total_portfolio_value: i128,
     ) -> SimulationPlanResult {
-        let drift_before = Self::calculate_portfolio_drift(
-            env,
-            portfolio_id,
-            target,
-            current,
-            threshold_bps,
-        );
+        let drift_before =
+            Self::calculate_portfolio_drift(env, portfolio_id, target, current, threshold_bps);
 
         let plan = Self::calculate_rebalance_trades(
             env,
@@ -575,15 +565,26 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 6_000), (symbol_short!("XLM"), 4_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 6_000),
+                    (symbol_short!("XLM"), 4_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 6_000), (symbol_short!("XLM"), 4_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 6_000),
+                    (symbol_short!("XLM"), 4_000),
+                ],
+            ),
         };
 
-        let report = DriftEngine::calculate_portfolio_drift(
-            &env, &portfolio, &target, &current, 100,
-        );
+        let report =
+            DriftEngine::calculate_portfolio_drift(&env, &portfolio, &target, &current, 100);
 
         assert_eq!(report.summary.assets_out_of_threshold, 0);
         assert_eq!(report.summary.max_drift_bps, 0);
@@ -595,15 +596,26 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_250), (symbol_short!("XLM"), 4_750)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_250),
+                    (symbol_short!("XLM"), 4_750),
+                ],
+            ),
         };
 
-        let report = DriftEngine::calculate_portfolio_drift(
-            &env, &portfolio, &target, &current, 100,
-        );
+        let report =
+            DriftEngine::calculate_portfolio_drift(&env, &portfolio, &target, &current, 100);
 
         assert_eq!(report.summary.assets_out_of_threshold, 2);
         assert_eq!(report.summary.max_drift_bps, 250);
@@ -630,15 +642,17 @@ mod tests {
             allocations: weights(&env, &[(symbol_short!("USDC"), 10_000)]),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[
-                (symbol_short!("USDC"), 7_000),
-                (symbol_short!("XLM"), 3_000),
-            ]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 7_000),
+                    (symbol_short!("XLM"), 3_000),
+                ],
+            ),
         };
 
-        let report = DriftEngine::calculate_portfolio_drift(
-            &env, &portfolio, &target, &current, 100,
-        );
+        let report =
+            DriftEngine::calculate_portfolio_drift(&env, &portfolio, &target, &current, 100);
 
         // XLM is in current but not target → treated as target=0
         assert_eq!(report.summary.assets_out_of_threshold, 2);
@@ -660,18 +674,20 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[
-                (symbol_short!("USDC"), 5_000),
-                (symbol_short!("XLM"), 5_000),
-            ]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
             allocations: Map::new(&env),
         };
 
-        let report = DriftEngine::calculate_portfolio_drift(
-            &env, &portfolio, &target, &current, 100,
-        );
+        let report =
+            DriftEngine::calculate_portfolio_drift(&env, &portfolio, &target, &current, 100);
 
         // Both assets should have full negative drift (need to buy).
         assert_eq!(report.summary.assets_out_of_threshold, 2);
@@ -686,22 +702,32 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         // 1 bps drift = 0.01% accuracy
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_001), (symbol_short!("XLM"), 4_999)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_001),
+                    (symbol_short!("XLM"), 4_999),
+                ],
+            ),
         };
 
-        let report = DriftEngine::calculate_portfolio_drift(
-            &env, &portfolio, &target, &current, 0,
-        );
+        let report = DriftEngine::calculate_portfolio_drift(&env, &portfolio, &target, &current, 0);
 
         let usdc_drift = report.asset_drifts.get(0).unwrap();
         assert_eq!(usdc_drift.drift_bps, 1);
         assert_eq!(usdc_drift.drift_pct, 1); // 0.01%
         assert!(!usdc_drift.exceeds_threshold); // threshold=0, abs_drift=1, 1 > 0 is true
-        // Actually with threshold=0, any drift exceeds it
+                                                // Actually with threshold=0, any drift exceeds it
         assert!(usdc_drift.exceeds_threshold);
     }
 
@@ -710,15 +736,26 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_300), (symbol_short!("XLM"), 4_700)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_300),
+                    (symbol_short!("XLM"), 4_700),
+                ],
+            ),
         };
 
-        let (needs, count) = DriftEngine::detect_rebalancing_need(
-            &env, &portfolio, &target, &current, 200,
-        );
+        let (needs, count) =
+            DriftEngine::detect_rebalancing_need(&env, &portfolio, &target, &current, 200);
 
         assert!(needs);
         assert_eq!(count, 2); // Both exceed 200 bps
@@ -729,15 +766,26 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_050), (symbol_short!("XLM"), 4_950)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_050),
+                    (symbol_short!("XLM"), 4_950),
+                ],
+            ),
         };
 
-        let (needs, count) = DriftEngine::detect_rebalancing_need(
-            &env, &portfolio, &target, &current, 100,
-        );
+        let (needs, count) =
+            DriftEngine::detect_rebalancing_need(&env, &portfolio, &target, &current, 100);
 
         assert!(!needs);
         assert_eq!(count, 0);
@@ -748,24 +796,36 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[
-                (symbol_short!("USDC"), 5_000),
-                (symbol_short!("XLM"), 3_000),
-                (symbol_short!("BTC"), 2_000),
-            ]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 3_000),
+                    (symbol_short!("BTC"), 2_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[
-                (symbol_short!("USDC"), 5_500),
-                (symbol_short!("XLM"), 2_500),
-                (symbol_short!("BTC"), 2_000),
-            ]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_500),
+                    (symbol_short!("XLM"), 2_500),
+                    (symbol_short!("BTC"), 2_000),
+                ],
+            ),
         };
         let constraints = TradeConstraints::default();
         let total_value: i128 = 1_000_000;
 
         let plan = DriftEngine::calculate_rebalance_trades(
-            &env, &portfolio, &target, &current, 100, &constraints, total_value,
+            &env,
+            &portfolio,
+            &target,
+            &current,
+            100,
+            &constraints,
+            total_value,
         );
 
         // USDC is overweight by 500 bps → sell 500/10000 * 1M = 50,000
@@ -785,10 +845,22 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_010), (symbol_short!("XLM"), 4_990)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_010),
+                    (symbol_short!("XLM"), 4_990),
+                ],
+            ),
         };
         let constraints = TradeConstraints {
             min_trade_size: 1_000,
@@ -797,7 +869,13 @@ mod tests {
         let total_value: i128 = 1_000;
 
         let plan = DriftEngine::calculate_rebalance_trades(
-            &env, &portfolio, &target, &current, 100, &constraints, total_value,
+            &env,
+            &portfolio,
+            &target,
+            &current,
+            100,
+            &constraints,
+            total_value,
         );
 
         // Trade value = 1000 * 10 / 10000 = 1, which is < min_trade_size=1000
@@ -809,20 +887,26 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[
-                (symbol_short!("A"), 2_500),
-                (symbol_short!("B"), 2_500),
-                (symbol_short!("C"), 2_500),
-                (symbol_short!("D"), 2_500),
-            ]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("A"), 2_500),
+                    (symbol_short!("B"), 2_500),
+                    (symbol_short!("C"), 2_500),
+                    (symbol_short!("D"), 2_500),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[
-                (symbol_short!("A"), 3_500),
-                (symbol_short!("B"), 1_500),
-                (symbol_short!("C"), 3_500),
-                (symbol_short!("D"), 1_500),
-            ]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("A"), 3_500),
+                    (symbol_short!("B"), 1_500),
+                    (symbol_short!("C"), 3_500),
+                    (symbol_short!("D"), 1_500),
+                ],
+            ),
         };
         let constraints = TradeConstraints {
             max_trades: 1,
@@ -831,7 +915,13 @@ mod tests {
         let total_value: i128 = 1_000_000;
 
         let plan = DriftEngine::calculate_rebalance_trades(
-            &env, &portfolio, &target, &current, 100, &constraints, total_value,
+            &env,
+            &portfolio,
+            &target,
+            &current,
+            100,
+            &constraints,
+            total_value,
         );
 
         // Should only execute 1 trade even though there are 2 pairs
@@ -842,10 +932,22 @@ mod tests {
     fn test_validate_inputs_valid() {
         let env = Env::default();
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
 
         let result = DriftEngine::validate_rebalance_inputs(&env, &target, &current, 100);
@@ -857,10 +959,22 @@ mod tests {
     fn test_validate_inputs_bad_target() {
         let env = Env::default();
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 6_000), (symbol_short!("XLM"), 4_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 6_000),
+                    (symbol_short!("XLM"), 4_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
 
         let result = DriftEngine::validate_rebalance_inputs(&env, &target, &current, 100);
@@ -888,16 +1002,34 @@ mod tests {
         let env = Env::default();
         let portfolio = symbol_short!("port1");
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_300), (symbol_short!("XLM"), 4_700)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_300),
+                    (symbol_short!("XLM"), 4_700),
+                ],
+            ),
         };
         let constraints = TradeConstraints::default();
         let total_value: i128 = 1_000_000;
 
         let sim = DriftEngine::simulate_rebalance_full(
-            &env, &portfolio, &target, &current, 100, &constraints, total_value,
+            &env,
+            &portfolio,
+            &target,
+            &current,
+            100,
+            &constraints,
+            total_value,
         );
 
         // Drift before: USDC +300 bps, XLM -300 bps
@@ -922,9 +1054,8 @@ mod tests {
             allocations: weights(&env, &[(symbol_short!("USDC"), 10_000)]),
         };
 
-        let report = DriftEngine::calculate_portfolio_drift(
-            &env, &portfolio, &target, &current, 100,
-        );
+        let report =
+            DriftEngine::calculate_portfolio_drift(&env, &portfolio, &target, &current, 100);
 
         assert_eq!(report.summary.assets_out_of_threshold, 0);
         assert_eq!(report.summary.total_assets, 1);
@@ -937,22 +1068,39 @@ mod tests {
         let portfolio = symbol_short!("port1");
 
         let target = TargetAllocation {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_000), (symbol_short!("XLM"), 5_000)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_000),
+                    (symbol_short!("XLM"), 5_000),
+                ],
+            ),
         };
         let current = CurrentHoldings {
-            allocations: weights(&env, &[(symbol_short!("USDC"), 5_300), (symbol_short!("XLM"), 4_700)]),
+            allocations: weights(
+                &env,
+                &[
+                    (symbol_short!("USDC"), 5_300),
+                    (symbol_short!("XLM"), 4_700),
+                ],
+            ),
         };
 
-        let drift_before = DriftEngine::calculate_portfolio_drift(
-            &env, &portfolio, &target, &current, 100,
-        );
+        let drift_before =
+            DriftEngine::calculate_portfolio_drift(&env, &portfolio, &target, &current, 100);
         let drift_after = DriftEngine::calculate_portfolio_drift(
             &env, &portfolio, &target, &target, 100, // target == current after rebalance
         );
 
         let record = DriftEngine::create_rebalance_record(
-            &env, &portfolio, &drift_before, &drift_after, 1, true,
-            &symbol_short!("manual"), 150,
+            &env,
+            &portfolio,
+            &drift_before,
+            &drift_after,
+            1,
+            true,
+            &symbol_short!("manual"),
+            150,
         );
 
         assert!(record.atomic_success);

@@ -1,6 +1,6 @@
 //! Data types and storage keys for the Price Feed Oracle contract.
 
-use soroban_sdk::{contracterror, contracttype, symbol_short, Address, Env, Map, Symbol, Vec};
+use soroban_sdk::{contracterror, contracttype, Address, Symbol};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -182,7 +182,7 @@ pub enum PriceFeedDataKey {
     /// All registered oracle providers: Map<Symbol, OracleProvider>.
     Oracles,
     /// Latest cached price per asset: Map<Symbol, CachedPrice>.
-    CachedPrices,
+    CachedPrices(Symbol),
     /// Most recent raw price from each oracle per asset:
     /// Map<(Symbol, Symbol), PriceDataPoint> keyed by (asset, provider_id).
     LatestDataPoint(Symbol, Symbol),

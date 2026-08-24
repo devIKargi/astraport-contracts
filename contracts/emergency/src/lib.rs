@@ -409,10 +409,8 @@ impl EmergencyControls {
             0,
         );
 
-        env.events().publish(
-            (symbol_short!("PAUSE"), &caller),
-            &reason,
-        );
+        env.events()
+            .publish((symbol_short!("PAUSE"), &caller), &reason);
 
         symbol_short!("ok")
     }
@@ -437,10 +435,8 @@ impl EmergencyControls {
             0,
         );
 
-        env.events().publish(
-            (symbol_short!("UNPAUS"), &admin),
-            &reason,
-        );
+        env.events()
+            .publish((symbol_short!("UNPAUS"), &admin), &reason);
 
         symbol_short!("ok")
     }
@@ -501,7 +497,7 @@ impl EmergencyControls {
     pub fn set_emergency_withdrawal_fee(env: Env, fee_bps: i128) -> Symbol {
         let admin = require_admin(&env);
 
-        if fee_bps < 0 || fee_bps > BPS_DENOM {
+        if !(0..=BPS_DENOM).contains(&fee_bps) {
             soroban_sdk::panic_with_error!(&env, Error::InvalidConfiguration);
         }
 
@@ -584,10 +580,8 @@ impl EmergencyControls {
             0,
         );
 
-        env.events().publish(
-            (symbol_short!("CB_RST"), &admin),
-            &reason,
-        );
+        env.events()
+            .publish((symbol_short!("CB_RST"), &admin), &reason);
 
         symbol_short!("ok")
     }
@@ -656,10 +650,8 @@ impl EmergencyControls {
             max_amount,
         );
 
-        env.events().publish(
-            (symbol_short!("MX_TR"), &admin),
-            max_amount,
-        );
+        env.events()
+            .publish((symbol_short!("MX_TR"), &admin), max_amount);
 
         symbol_short!("ok")
     }
@@ -695,10 +687,8 @@ impl EmergencyControls {
             0,
         );
 
-        env.events().publish(
-            (symbol_short!("SF_MOD"), &caller),
-            &reason,
-        );
+        env.events()
+            .publish((symbol_short!("SF_MOD"), &caller), &reason);
 
         symbol_short!("ok")
     }
@@ -723,10 +713,8 @@ impl EmergencyControls {
             0,
         );
 
-        env.events().publish(
-            (symbol_short!("SF_EXIT"), &admin),
-            &reason,
-        );
+        env.events()
+            .publish((symbol_short!("SF_EXIT"), &admin), &reason);
 
         symbol_short!("ok")
     }
@@ -887,12 +875,7 @@ impl EmergencyControls {
     /// Get the current rate limit config for an operation.
     pub fn get_rate_limit_config(env: Env, operation: Symbol) -> Option<RateLimitConfig> {
         let limits = get_rate_limits(&env);
-        for limit in limits.iter() {
-            if limit.operation == operation {
-                return Some(limit);
-            }
-        }
-        None
+        limits.iter().find(|limit| limit.operation == operation)
     }
 
     /// Get the current call count for a rate-limited operation.
@@ -997,12 +980,7 @@ impl EmergencyControls {
     }
 
     /// Emit a notification event for all registered notifiers.
-    pub fn notify(
-        env: Env,
-        event_type: Symbol,
-        severity: IncidentSeverity,
-        data: i128,
-    ) -> u32 {
+    pub fn notify(env: Env, event_type: Symbol, severity: IncidentSeverity, data: i128) -> u32 {
         let notifiers = get_notifiers(&env);
         let count = notifiers.len();
 
@@ -1294,7 +1272,11 @@ mod tests {
     #[test]
     fn test_circuit_breaker_negative_price_change() {
         let price_change_bps: i128 = -3000;
-        let abs_change = if price_change_bps < 0 { -price_change_bps } else { price_change_bps };
+        let abs_change = if price_change_bps < 0 {
+            -price_change_bps
+        } else {
+            price_change_bps
+        };
         assert!(abs_change >= 2000);
     }
 

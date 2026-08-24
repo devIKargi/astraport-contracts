@@ -13,11 +13,12 @@
 //! provides equivalent collision-resistance and runs natively in the host,
 //! keeping per-log cost predictable.
 
-use soroban_sdk::{FromVal, Address, Bytes, BytesN, Env, IntoVal, String, Symbol};
+use soroban_sdk::{Address, Bytes, BytesN, Env, IntoVal, String, Symbol};
 
 use crate::records::{StateSnapshot, CHAIN_ORIGIN};
 
 /// Helper: copy a Soroban `String` into a heap `alloc::string::String`.
+#[allow(dead_code)]
 fn soroban_string_to_rust(s: &String) -> alloc::string::String {
     let len = s.len() as usize;
     let mut buf = alloc::vec![0u8; len];

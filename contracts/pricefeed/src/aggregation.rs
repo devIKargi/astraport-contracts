@@ -1,12 +1,9 @@
 //! Multi-oracle price aggregation strategies.
 
-use soroban_sdk::{Env, Vec};
+use soroban_sdk::{symbol_short, Env, Symbol, Vec};
 
 use crate::oracle::OracleManager;
-use crate::records::{
-    AggregatedPrice, AggregationMethod, OracleProvider, PriceDataPoint, PriceStatus,
-    PRICE_PRECISION,
-};
+use crate::records::{AggregatedPrice, AggregationMethod, PriceDataPoint, PriceStatus};
 use crate::validation;
 
 // ---------------------------------------------------------------------------
@@ -223,5 +220,3 @@ impl AggregateEngine {
         worst
     }
 }
-
-

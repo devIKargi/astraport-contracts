@@ -33,7 +33,12 @@ fn setup() -> (Env, VersioningContractClient<'static>, Address) {
 fn setup_with_signers(
     signer_count: u32,
     threshold: u32,
-) -> (Env, VersioningContractClient<'static>, Address, Vec<Address>) {
+) -> (
+    Env,
+    VersioningContractClient<'static>,
+    Address,
+    Vec<Address>,
+) {
     let (env, client, admin) = setup();
     let mut signers = Vec::new(&env);
     for _ in 0..signer_count {
@@ -431,10 +436,7 @@ fn test_rollback_nonexistent_version_fails() {
 #[test]
 fn test_rollback_no_versions_fails() {
     let (_env, client, admin) = setup();
-    assert_eq!(
-        client.try_rollback(&admin, &1),
-        Err(Ok(Error::NoVersions))
-    );
+    assert_eq!(client.try_rollback(&admin, &1), Err(Ok(Error::NoVersions)));
 }
 
 // ---------------------------------------------------------------------------
