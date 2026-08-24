@@ -162,7 +162,7 @@ impl MultiAssetRebalancer {
 
             // Adjust expected amount based on tradeoff.
             let expected_amount_to_buy = match tradeoff {
-                Tradeoff::Cost => base_expected_amount,      // No penalty
+                Tradeoff::Cost => base_expected_amount, // No penalty
                 Tradeoff::Time => (base_expected_amount * 99) / 100, // 1% penalty for speed
                 Tradeoff::Balanced => (base_expected_amount * 995) / 1000, // 0.5% penalty
             };

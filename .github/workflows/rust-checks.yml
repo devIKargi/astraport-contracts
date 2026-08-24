@@ -1,0 +1,45 @@
+name: Rust checks
+
+on:
+  push:
+    branches: [main, feat/book]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    name: Format, build, and Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Build working packages
+        run: >
+          cargo build -p astraport-trade -p astraport-audit -p astraport-staking
+          -p astraport-emergency -p astraport-versioning -p astraport-gamification
+          -p astraport-events
+
+      - name: Run Clippy on working packages
+        run: >
+          cargo clippy -p astraport-trade -p astraport-audit -p astraport-staking
+          -p astraport-emergency -p astraport-versioning -p astraport-gamification
+          -p astraport-events -- -D warnings
+
+      - name: Run tests
+        run: >
+          cargo test -p astraport-trade -p astraport-emergency
+          -p astraport-versioning -p astraport-gamification

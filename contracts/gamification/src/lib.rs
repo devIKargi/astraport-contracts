@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
@@ -362,10 +363,7 @@ fn put_challenge_entry(env: &Env, entry: &ChallengeEntry) {
 }
 
 fn get_reward_pool(env: &Env) -> i128 {
-    env.storage()
-        .instance()
-        .get(&RWD_POOL)
-        .unwrap_or(0)
+    env.storage().instance().get(&RWD_POOL).unwrap_or(0)
 }
 
 fn put_reward_pool(env: &Env, amount: i128) {
@@ -484,11 +482,7 @@ fn tier_reward(tier: &ProgressionTier) -> i128 {
 
 /// Evaluate which badges a player should earn based on their stats.
 /// Returns a Vec of badge_ids that should be newly issued.
-fn evaluate_badges(
-    env: &Env,
-    user: &Address,
-    stats: &PlayerStats,
-) -> soroban_sdk::Vec<Symbol> {
+fn evaluate_badges(env: &Env, user: &Address, stats: &PlayerStats) -> soroban_sdk::Vec<Symbol> {
     let earned = get_user_badge_ids(env, user);
     let mut new_badges = soroban_sdk::Vec::new(env);
 
@@ -505,12 +499,29 @@ fn evaluate_badges(
         (symbol_short!("STRK10"), stats.best_streak >= 10),
         (symbol_short!("LRN_1"), stats.modules_completed >= 1),
         (symbol_short!("LRN_5"), stats.modules_completed >= 5),
-        (symbol_short!("LRN_ALL"), stats.total_modules > 0 && stats.modules_completed >= stats.total_modules),
+        (
+            symbol_short!("LRN_ALL"),
+            stats.total_modules > 0 && stats.modules_completed >= stats.total_modules,
+        ),
         (symbol_short!("COM_1"), stats.community_actions >= 1),
-        (symbol_short!("BRZ_TIR"), stats.tier == ProgressionTier::Bronze && stats.total_score >= TIER_SILVER - 1),
-        (symbol_short!("SLV_TIR"), stats.tier == ProgressionTier::Silver || stats.tier == ProgressionTier::Gold || stats.tier == ProgressionTier::Platinum),
-        (symbol_short!("GLD_TIR"), stats.tier == ProgressionTier::Gold || stats.tier == ProgressionTier::Platinum),
-        (symbol_short!("PLT_TIR"), stats.tier == ProgressionTier::Platinum),
+        (
+            symbol_short!("BRZ_TIR"),
+            stats.tier == ProgressionTier::Bronze && stats.total_score >= TIER_SILVER - 1,
+        ),
+        (
+            symbol_short!("SLV_TIR"),
+            stats.tier == ProgressionTier::Silver
+                || stats.tier == ProgressionTier::Gold
+                || stats.tier == ProgressionTier::Platinum,
+        ),
+        (
+            symbol_short!("GLD_TIR"),
+            stats.tier == ProgressionTier::Gold || stats.tier == ProgressionTier::Platinum,
+        ),
+        (
+            symbol_short!("PLT_TIR"),
+            stats.tier == ProgressionTier::Platinum,
+        ),
     ];
 
     for (badge_id, condition) in checks.iter() {
@@ -702,7 +713,8 @@ fn build_leaderboard(
     let _total = user_ids.len();
 
     // Collect all entries with their sort keys
-    let mut entries: soroban_sdk::Vec<(Address, i128, i128, u32, i128, u32)> = soroban_sdk::Vec::new(env);
+    let mut entries: soroban_sdk::Vec<(Address, i128, i128, u32, i128, u32)> =
+        soroban_sdk::Vec::new(env);
     for user in user_ids.iter() {
         let stats = get_player_stats(env, &user);
         if let Some(s) = stats {
@@ -712,7 +724,14 @@ fn build_leaderboard(
                 SortMetric::Roi => s.best_roi_bps,
                 SortMetric::Streak => s.best_streak as i128,
             };
-            entries.push_back((user, sort_key, s.total_score, s.successful_trades, s.best_roi_bps, s.best_streak));
+            entries.push_back((
+                user,
+                sort_key,
+                s.total_score,
+                s.successful_trades,
+                s.best_roi_bps,
+                s.best_streak,
+            ));
         }
     }
 
@@ -737,7 +756,11 @@ fn build_leaderboard(
     }
 
     let total_players = entries.len();
-    let actual_offset = if offset >= total_players { total_players } else { offset };
+    let actual_offset = if offset >= total_players {
+        total_players
+    } else {
+        offset
+    };
     let actual_limit = if limit > MAX_LEADERBOARD_RETURN {
         MAX_LEADERBOARD_RETURN
     } else {
@@ -761,9 +784,9 @@ fn build_leaderboard(
             user: e.0,
             score: e.2,
             tier,
-            trade_count: e.3 as u32,
+            trade_count: e.3,
             best_roi_bps: e.4,
-            streak: e.5 as u32,
+            streak: e.5,
         });
         rank += 1;
         idx += 1;
@@ -850,7 +873,11 @@ impl GamificationEngine {
         }
 
         let total_modules_key = symbol_short!("TOT_MOD");
-        let total_modules: u32 = env.storage().instance().get(&total_modules_key).unwrap_or(0);
+        let total_modules: u32 = env
+            .storage()
+            .instance()
+            .get(&total_modules_key)
+            .unwrap_or(0);
 
         let stats = PlayerStats {
             user: user.clone(),
@@ -1082,10 +1109,8 @@ impl GamificationEngine {
                 }
             }
 
-            env.events().publish(
-                (symbol_short!("BADGE"), &user),
-                (&badge_id, reward),
-            );
+            env.events()
+                .publish((symbol_short!("BADGE"), &user), (&badge_id, reward));
         }
 
         put_user_badge_ids(&env, &user, &earned_ids);
@@ -1102,12 +1127,7 @@ impl GamificationEngine {
     ///
     /// # Returns
     /// Success symbol
-    pub fn issue_badge(
-        env: Env,
-        admin: Address,
-        user: Address,
-        badge_id: Symbol,
-    ) -> Symbol {
+    pub fn issue_badge(env: Env, admin: Address, user: Address, badge_id: Symbol) -> Symbol {
         admin.require_auth();
         if admin != get_admin(&env) {
             soroban_sdk::panic_with_error!(&env, Error::AdminRequired);
@@ -1144,20 +1164,14 @@ impl GamificationEngine {
             }
         }
 
-        env.events().publish(
-            (symbol_short!("BDG_IS"), &user),
-            (&badge_id, reward),
-        );
+        env.events()
+            .publish((symbol_short!("BDG_IS"), &user), (&badge_id, reward));
 
         symbol_short!("ok")
     }
 
     /// Get a badge record for a specific user and badge.
-    pub fn get_badge_record(
-        env: Env,
-        user: Address,
-        badge_id: Symbol,
-    ) -> Option<BadgeRecord> {
+    pub fn get_badge_record(env: Env, user: Address, badge_id: Symbol) -> Option<BadgeRecord> {
         get_badge_record(&env, &user, &badge_id)
     }
 
@@ -1366,10 +1380,8 @@ impl GamificationEngine {
         };
         put_challenge_entry(&env, &entry);
 
-        env.events().publish(
-            (symbol_short!("CHL_JN"), &user),
-            &challenge_id,
-        );
+        env.events()
+            .publish((symbol_short!("CHL_JN"), &user), &challenge_id);
 
         symbol_short!("ok")
     }
@@ -1511,10 +1523,8 @@ impl GamificationEngine {
         put_reward_pool(&env, pool - amount);
         add_to_reward_distributed(&env, &user, amount);
 
-        env.events().publish(
-            (symbol_short!("RWD"), &user),
-            (amount, stats.tier as u32),
-        );
+        env.events()
+            .publish((symbol_short!("RWD"), &user), (amount, stats.tier as u32));
 
         amount
     }

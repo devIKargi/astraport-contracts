@@ -34,8 +34,7 @@
 extern crate alloc;
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, symbol_short, Address, BytesN, Env, Symbol,
-    Vec,
+    contract, contracterror, contractimpl, symbol_short, Address, BytesN, Env, Symbol, Vec,
 };
 
 pub mod migration;
@@ -116,11 +115,7 @@ impl VersioningContract {
     /// signers and a higher threshold should be configured afterward via
     /// `add_signer` and `set_approval_threshold`.
     pub fn initialize(env: Env, admin: Address) -> Symbol {
-        if env
-            .storage()
-            .persistent()
-            .has(&VersionStorageKey::Admin)
-        {
+        if env.storage().persistent().has(&VersionStorageKey::Admin) {
             panic!("already initialized");
         }
         env.storage()
@@ -297,10 +292,9 @@ impl VersioningContract {
             description,
         };
 
-        env.storage().persistent().set(
-            &VersionStorageKey::VersionMetadata(version_number),
-            &meta,
-        );
+        env.storage()
+            .persistent()
+            .set(&VersionStorageKey::VersionMetadata(version_number), &meta);
 
         let mut versions = all_versions;
         versions.push_back(version_number);
@@ -356,11 +350,7 @@ impl VersioningContract {
     /// Propose upgrading to a specific version. Admin-only.
     ///
     /// Creates a new [`UpgradeProposal`] and returns its id.
-    pub fn propose_upgrade(
-        env: Env,
-        admin: Address,
-        target_version: u32,
-    ) -> Result<u64, Error> {
+    pub fn propose_upgrade(env: Env, admin: Address, target_version: u32) -> Result<u64, Error> {
         Self::assert_admin(&env, &admin)?;
         admin.require_auth();
 
@@ -390,15 +380,13 @@ impl VersioningContract {
             rejected: false,
         };
 
-        env.storage().persistent().set(
-            &VersionStorageKey::Proposal(proposal_id),
-            &proposal,
-        );
+        env.storage()
+            .persistent()
+            .set(&VersionStorageKey::Proposal(proposal_id), &proposal);
 
-        env.storage().persistent().set(
-            &VersionStorageKey::NextProposalId,
-            &(proposal_id + 1),
-        );
+        env.storage()
+            .persistent()
+            .set(&VersionStorageKey::NextProposalId, &(proposal_id + 1));
 
         Self::append_audit(
             &env,
@@ -412,11 +400,7 @@ impl VersioningContract {
     }
 
     /// Approve an upgrade proposal. Must be called by a registered signer.
-    pub fn approve_upgrade(
-        env: Env,
-        signer: Address,
-        proposal_id: u64,
-    ) -> Result<Symbol, Error> {
+    pub fn approve_upgrade(env: Env, signer: Address, proposal_id: u64) -> Result<Symbol, Error> {
         signer.require_auth();
 
         // Verify signer is authorized.
@@ -454,10 +438,9 @@ impl VersioningContract {
         }
 
         proposal.approvals.push_back(signer.clone());
-        env.storage().persistent().set(
-            &VersionStorageKey::Proposal(proposal_id),
-            &proposal,
-        );
+        env.storage()
+            .persistent()
+            .set(&VersionStorageKey::Proposal(proposal_id), &proposal);
 
         Self::append_audit(
             &env,
@@ -475,10 +458,7 @@ impl VersioningContract {
     /// Any address may call this (the threshold is checked against the
     /// recorded approvals). The actual WASM upgrade is handled externally;
     /// this entrypoint performs the version state transition.
-    pub fn execute_upgrade(
-        env: Env,
-        proposal_id: u64,
-    ) -> Result<Symbol, Error> {
+    pub fn execute_upgrade(env: Env, proposal_id: u64) -> Result<Symbol, Error> {
         let mut proposal: UpgradeProposal = env
             .storage()
             .persistent()
@@ -516,10 +496,9 @@ impl VersioningContract {
 
         // Mark proposal as executed.
         proposal.executed = true;
-        env.storage().persistent().set(
-            &VersionStorageKey::Proposal(proposal_id),
-            &proposal,
-        );
+        env.storage()
+            .persistent()
+            .set(&VersionStorageKey::Proposal(proposal_id), &proposal);
 
         Self::append_audit(
             &env,
@@ -533,11 +512,7 @@ impl VersioningContract {
     }
 
     /// Reject an upgrade proposal. Admin-only.
-    pub fn reject_upgrade(
-        env: Env,
-        admin: Address,
-        proposal_id: u64,
-    ) -> Result<Symbol, Error> {
+    pub fn reject_upgrade(env: Env, admin: Address, proposal_id: u64) -> Result<Symbol, Error> {
         Self::assert_admin(&env, &admin)?;
         admin.require_auth();
 
@@ -552,10 +527,9 @@ impl VersioningContract {
         }
 
         proposal.rejected = true;
-        env.storage().persistent().set(
-            &VersionStorageKey::Proposal(proposal_id),
-            &proposal,
-        );
+        env.storage()
+            .persistent()
+            .set(&VersionStorageKey::Proposal(proposal_id), &proposal);
 
         Self::append_audit(
             &env,
@@ -602,11 +576,7 @@ impl VersioningContract {
     ///
     /// Admin-only. The target version must have been the version immediately
     /// before the current one (status `Superseded`).
-    pub fn rollback(
-        env: Env,
-        admin: Address,
-        target_version: u32,
-    ) -> Result<Symbol, Error> {
+    pub fn rollback(env: Env, admin: Address, target_version: u32) -> Result<Symbol, Error> {
         Self::assert_admin(&env, &admin)?;
         admin.require_auth();
 
@@ -621,17 +591,16 @@ impl VersioningContract {
         }
 
         let _record: MigrationRecord =
-            execute_rollback(&env, current_version, target_version, admin.clone())
-                .map_err(|e| {
+            execute_rollback(&env, current_version, target_version, admin.clone()).map_err(
+                |e| {
                     // Map migration errors to versioning errors.
                     match e {
-                        migration::MigrationError::TargetVersionNotFound => {
-                            Error::ProposalNotFound
-                        }
+                        migration::MigrationError::TargetVersionNotFound => Error::ProposalNotFound,
                         migration::MigrationError::InvalidTargetStatus => Error::Unauthorized,
                         _ => Error::Unauthorized,
                     }
-                })?;
+                },
+            )?;
 
         Self::append_audit(
             &env,
@@ -694,13 +663,7 @@ impl VersioningContract {
                 .set(&VersionStorageKey::AllFeatureFlags, &flags);
         }
 
-        Self::append_audit(
-            &env,
-            &symbol_short!("set_flag"),
-            0,
-            &admin,
-            &flag_name,
-        );
+        Self::append_audit(&env, &symbol_short!("set_flag"), 0, &admin, &flag_name);
 
         Ok(OK)
     }
@@ -763,11 +726,7 @@ impl VersioningContract {
 
     /// Freeze a version for archival. Frozen versions cannot be activated.
     /// Admin-only. Cannot freeze the currently active version.
-    pub fn freeze_version(
-        env: Env,
-        admin: Address,
-        version_number: u32,
-    ) -> Result<Symbol, Error> {
+    pub fn freeze_version(env: Env, admin: Address, version_number: u32) -> Result<Symbol, Error> {
         Self::assert_admin(&env, &admin)?;
         admin.require_auth();
 
@@ -791,10 +750,9 @@ impl VersioningContract {
         }
 
         meta.status = VersionStatus::Frozen;
-        env.storage().persistent().set(
-            &VersionStorageKey::VersionMetadata(version_number),
-            &meta,
-        );
+        env.storage()
+            .persistent()
+            .set(&VersionStorageKey::VersionMetadata(version_number), &meta);
 
         // Track in frozen list.
         let mut frozen: Vec<u32> = env
@@ -829,7 +787,7 @@ impl VersioningContract {
     /// Check if a version is frozen.
     pub fn is_version_frozen(env: Env, version_number: u32) -> bool {
         let frozen: Vec<u32> = Self::get_frozen_versions(env);
-        frozen.contains(&version_number)
+        frozen.contains(version_number)
     }
 
     // -----------------------------------------------------------------------
@@ -842,9 +800,12 @@ impl VersioningContract {
         from_version: u32,
         to_version: u32,
     ) -> Option<MigrationRecord> {
-        env.storage().persistent().get(
-            &VersionStorageKey::MigrationRecord(from_version, to_version),
-        )
+        env.storage()
+            .persistent()
+            .get(&VersionStorageKey::MigrationRecord(
+                from_version,
+                to_version,
+            ))
     }
 
     // -----------------------------------------------------------------------
@@ -854,11 +815,7 @@ impl VersioningContract {
     /// Check if upgrading from one version to another is compatible.
     ///
     /// Returns `true` if the upgrade path is valid.
-    pub fn check_backward_compatibility(
-        env: Env,
-        from_version: u32,
-        to_version: u32,
-    ) -> bool {
+    pub fn check_backward_compatibility(env: Env, from_version: u32, to_version: u32) -> bool {
         migration::check_compatibility(&env, from_version, to_version).is_ok()
     }
 
@@ -912,10 +869,7 @@ impl VersioningContract {
     }
 
     /// Get audit trail entries filtered by version number.
-    pub fn get_audit_trail_for_version(
-        env: Env,
-        version_number: u32,
-    ) -> Vec<VersionAuditEntry> {
+    pub fn get_audit_trail_for_version(env: Env, version_number: u32) -> Vec<VersionAuditEntry> {
         let trail: Vec<VersionAuditEntry> = env
             .storage()
             .persistent()

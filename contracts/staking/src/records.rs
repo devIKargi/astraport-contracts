@@ -5,7 +5,7 @@
 //! pure-math results from [`crate::compounding`] and [`crate::apy`] into durable,
 //! queryable structures keyed by staker and asset.
 
-use soroban_sdk::{contracttype, Address, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Symbol};
 
 /// The compounding model, mirrored as a `#[contracttype]` for storage.
 ///
@@ -257,4 +257,64 @@ pub struct YieldDistributionRecord {
     pub accrued_at_claim: i128,
     /// Remaining reserve balance for the asset after this distribution.
     pub reserve_after: i128,
+}
+
+// ---------------------------------------------------------------------------
+// Multi-asset staking types
+// ---------------------------------------------------------------------------
+
+/// Yield rate configuration for an asset.
+#[contracttype]
+#[derive(Debug, Clone)]
+pub struct AssetYieldRate {
+    pub apr: i128,
+    pub mode: CompoundingMode,
+    pub unlock_schedule: UnlockSchedule,
+    pub max_stake: i128,
+}
+
+/// A staking position for a specific (staker, asset) pair.
+#[contracttype]
+#[derive(Debug, Clone)]
+pub struct StakingPosition {
+    pub staker: Address,
+    pub asset: Symbol,
+    pub principal: i128,
+    pub apr: i128,
+    pub mode: CompoundingMode,
+    pub opened_at: u64,
+    pub unlock_schedule: UnlockSchedule,
+    pub accrued_yield: i128,
+}
+
+/// How a staked position unlocks over time.
+#[contracttype]
+#[derive(Debug, Clone)]
+pub enum UnlockSchedule {
+    /// Immediately available.
+    Immediate,
+    /// Locked until a specific timestamp.
+    Cliff(u64),
+    /// Gradual unlock via tranches.
+    Graduated(GraduatedUnlock),
+}
+
+/// Configuration for graduated (tranche-based) unlock.
+#[contracttype]
+#[derive(Debug, Clone)]
+pub struct GraduatedUnlock {
+    pub start_ts: u64,
+    pub interval_seconds: u64,
+    pub tranche_pct_bps: u32,
+}
+
+/// A point-in-time snapshot of a staker's full portfolio.
+#[contracttype]
+#[derive(Debug, Clone)]
+pub struct PortfolioSnapshot {
+    pub total_principal: i128,
+    pub total_accrued_yield: i128,
+    pub asset_count: u32,
+    pub weighted_avg_apr: i128,
+    pub positions: soroban_sdk::Vec<StakingPosition>,
 }

@@ -10,6 +10,7 @@ members = [
     "contracts/pricefeed",
     "contracts/valuation",
     "contracts/versioning",
+    "contracts/trade",
 ]
 resolver = "2"
 

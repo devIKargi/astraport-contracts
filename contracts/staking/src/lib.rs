@@ -38,8 +38,8 @@ pub mod apy;
 pub mod compounding;
 pub mod emergency;
 pub mod engine;
-pub mod multi_asset;
 pub mod fixed_point;
+pub mod multi_asset;
 pub mod projection;
 pub mod records;
 
@@ -95,6 +95,14 @@ pub enum Error {
     InvalidClaimAmount = 9,
     /// No yield position exists for this staker/asset pair.
     NoYieldPosition = 10,
+    /// Contract has already been initialized.
+    AlreadyInitialized = 11,
+    /// Caller is not authorized.
+    Unauthorized = 12,
+    /// Amount exceeds the maximum stake limit.
+    ExceedsMaximumStake = 13,
+    /// Amount exceeds the unlocked (available) amount.
+    ExceedsUnlockedAmount = 14,
 }
 
 // ---------------------------------------------------------------------------
@@ -164,12 +172,7 @@ impl StakingContract {
     /// for `(staker, asset)` by `amount`, maintains the protocol-level
     /// `TotalStaked(asset)` aggregate and the distinct-active-staker count,
     /// and emits a `StakeEvent`.
-    pub fn stake(
-        env: Env,
-        staker: Address,
-        asset: Symbol,
-        amount: i128,
-    ) -> Result<Symbol, Error> {
+    pub fn stake(env: Env, staker: Address, asset: Symbol, amount: i128) -> Result<Symbol, Error> {
         staker.require_auth();
 
         if amount <= 0 {
@@ -177,7 +180,9 @@ impl StakingContract {
         }
         let key = StakeDataKey::Balance(staker.clone(), asset.clone());
         let current_balance: i128 = env.storage().persistent().get(&key).unwrap_or_default();
-        let new_balance = current_balance.checked_add(amount).ok_or(Error::InvalidStakeAmount)?;
+        let new_balance = current_balance
+            .checked_add(amount)
+            .ok_or(Error::InvalidStakeAmount)?;
         env.storage().persistent().set(&key, &new_balance);
 
         Self::update_totals_on_stake(&env, &staker, &asset, current_balance, new_balance);
@@ -531,10 +536,7 @@ impl StakingContract {
     }
 
     /// The full emergency-unstake history for `staker`, oldest first.
-    pub fn get_emergency_unstake_history(
-        env: Env,
-        staker: Address,
-    ) -> Vec<EmergencyUnstakeRecord> {
+    pub fn get_emergency_unstake_history(env: Env, staker: Address) -> Vec<EmergencyUnstakeRecord> {
         EmergencyUnstakeQuery::history(&env, &staker)
     }
 
@@ -542,11 +544,7 @@ impl StakingContract {
     /// without touching storage.
     ///
     /// Returns `None` if the emergency-unstake config has not been initialized.
-    pub fn preview_emergency_penalty(
-        env: Env,
-        lock_start_ts: u64,
-        unlock_ts: u64,
-    ) -> Option<i128> {
+    pub fn preview_emergency_penalty(env: Env, lock_start_ts: u64, unlock_ts: u64) -> Option<i128> {
         EmergencyUnstakeQuery::preview_penalty_bps(&env, lock_start_ts, unlock_ts)
     }
 
@@ -644,11 +642,7 @@ impl StakingContract {
     }
 
     /// The complete yield history for a staker/asset pair, oldest entry first.
-    pub fn yield_history(
-        env: Env,
-        staker: Address,
-        asset: Symbol,
-    ) -> Vec<YieldHistoryEntry> {
+    pub fn yield_history(env: Env, staker: Address, asset: Symbol) -> Vec<YieldHistoryEntry> {
         YieldEngine::new(&env).history(&staker, &asset)
     }
 
@@ -744,11 +738,7 @@ impl StakingContract {
     /// claims return 0.
     ///
     /// Returns a `Vec` of `(staker, claimed_amount)` pairs.
-    pub fn batch_claim(
-        env: Env,
-        stakers: Vec<Address>,
-        asset: Symbol,
-    ) -> Vec<(Address, i128)> {
+    pub fn batch_claim(env: Env, stakers: Vec<Address>, asset: Symbol) -> Vec<(Address, i128)> {
         // Require auth for each staker.
         for i in 0..stakers.len() {
             stakers.get(i).unwrap().require_auth();
@@ -772,7 +762,7 @@ impl StakingContract {
     /// Admin-only. Increases the reserve balance used to back distributions.
     pub fn fund_reserve(env: Env, admin: Address, asset: Symbol, amount: i128) -> i128 {
         admin.require_auth();
-        Self::assert_admin(&env, &admin);
+        let _ = Self::assert_admin(&env, &admin);
         YieldEngine::new(&env).fund_reserve(&asset, amount)
     }
 
@@ -786,7 +776,7 @@ impl StakingContract {
     /// Admin-only. Reduces the reserve balance and returns the new balance.
     pub fn withdraw_reserve(env: Env, admin: Address, asset: Symbol, amount: i128) -> i128 {
         admin.require_auth();
-        Self::assert_admin(&env, &admin);
+        let _ = Self::assert_admin(&env, &admin);
         YieldEngine::new(&env).withdraw_reserve(&asset, amount)
     }
 
@@ -798,7 +788,7 @@ impl StakingContract {
     /// directly).
     pub fn pause_distributions(env: Env, admin: Address) -> Symbol {
         admin.require_auth();
-        Self::assert_admin(&env, &admin);
+        let _ = Self::assert_admin(&env, &admin);
         YieldEngine::new(&env).set_paused(true);
         symbol_short!("paused")
     }
@@ -806,7 +796,7 @@ impl StakingContract {
     /// Resume yield distributions after a pause.
     pub fn unpause_distributions(env: Env, admin: Address) -> Symbol {
         admin.require_auth();
-        Self::assert_admin(&env, &admin);
+        let _ = Self::assert_admin(&env, &admin);
         YieldEngine::new(&env).set_paused(false);
         symbol_short!("active")
     }
@@ -929,7 +919,9 @@ impl StakingContract {
         let delta = new_balance - previous_balance;
         env.storage().persistent().set(
             &total_key,
-            &current_total.checked_add(delta).expect("TotalStaked overflow"),
+            &current_total
+                .checked_add(delta)
+                .expect("TotalStaked overflow"),
         );
 
         // ActiveStakerCount++ if this is the staker's first active position.
@@ -940,7 +932,11 @@ impl StakingContract {
             env.storage().persistent().set(&pos_key, &new_positions);
             if prev_positions == 0 {
                 let count_key = StakeDataKey::ActiveStakerCount;
-                let count: u32 = env.storage().persistent().get(&count_key).unwrap_or_default();
+                let count: u32 = env
+                    .storage()
+                    .persistent()
+                    .get(&count_key)
+                    .unwrap_or_default();
                 env.storage().persistent().set(&count_key, &(count + 1));
             }
         }
@@ -978,7 +974,9 @@ impl StakingContract {
         let delta = previous_balance - new_balance;
         env.storage().persistent().set(
             &total_key,
-            &current_total.checked_sub(delta).expect("TotalStaked underflow"),
+            &current_total
+                .checked_sub(delta)
+                .expect("TotalStaked underflow"),
         );
 
         // Decrement staker-position count when this pair's balance hits zero.
@@ -993,7 +991,11 @@ impl StakingContract {
             env.storage().persistent().set(&pos_key, &new_positions);
             if new_positions == 0 {
                 let count_key = StakeDataKey::ActiveStakerCount;
-                let count: u32 = env.storage().persistent().get(&count_key).unwrap_or_default();
+                let count: u32 = env
+                    .storage()
+                    .persistent()
+                    .get(&count_key)
+                    .unwrap_or_default();
                 env.storage()
                     .persistent()
                     .set(&count_key, &count.saturating_sub(1));
@@ -1008,7 +1010,9 @@ impl StakingContract {
     pub fn set_audit_sink(env: Env, admin: Address, sink: Address) -> Result<Symbol, Error> {
         admin.require_auth();
         Self::assert_admin(&env, &admin)?;
-        env.storage().persistent().set(&StakeDataKey::AuditSink, &sink);
+        env.storage()
+            .persistent()
+            .set(&StakeDataKey::AuditSink, &sink);
         Ok(symbol_short!("ok"))
     }
 

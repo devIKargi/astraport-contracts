@@ -490,7 +490,7 @@ mod storage_keys {
 // ---------------------------------------------------------------------------
 
 fn matches_filter(sub: &Subscription, event_type: &PortfolioEventType) -> bool {
-    if sub.event_types.len() == 0 {
+    if sub.event_types.is_empty() {
         return true;
     }
     for i in 0..sub.event_types.len() {
@@ -698,7 +698,7 @@ impl EventsContract {
 
         if new_status == AnalysisStatus::Completed {
             let mut ai_output: Map<Symbol, u32> = Map::new(&env);
-            if analysis.raw_output.len() > 0 {
+            if !analysis.raw_output.is_empty() {
                 ai_output.set(
                     symbol_short!("action"),
                     analysis.raw_output.get(0).unwrap_or(0) as u32,

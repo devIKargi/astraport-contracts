@@ -39,8 +39,7 @@ pub mod records;
 
 use crate::checksum::{chain_hash, entry_payload, first_chain_hash};
 use crate::records::{
-    AuditEventType, AuditLog, RetentionPolicy, StateSnapshot, StorageKey,
-    BUCKET_SIZE,
+    AuditEventType, AuditLog, RetentionPolicy, StateSnapshot, StorageKey, BUCKET_SIZE,
 };
 
 /// Sentinel return symbol.
@@ -87,7 +86,9 @@ impl AuditContract {
         }
         env.storage().persistent().set(&key, &admin);
         env.storage().persistent().set(&StorageKey::NextSeq, &0u64);
-        env.storage().persistent().set(&StorageKey::EntryCount, &0u64);
+        env.storage()
+            .persistent()
+            .set(&StorageKey::EntryCount, &0u64);
         env.storage().persistent().set(&StorageKey::FirstSeq, &1u64);
         Ok(OK)
     }
@@ -197,9 +198,13 @@ impl AuditContract {
             hash: hash.clone(),
         };
 
-        env.storage().persistent().set(&StorageKey::Entry(seq), &entry);
+        env.storage()
+            .persistent()
+            .set(&StorageKey::Entry(seq), &entry);
         env.storage().persistent().set(&StorageKey::NextSeq, &seq);
-        env.storage().persistent().set(&StorageKey::RollingChecksum, &hash);
+        env.storage()
+            .persistent()
+            .set(&StorageKey::RollingChecksum, &hash);
 
         // Update count + secondary indexes.
         let prev_count: u64 = env
@@ -211,7 +216,11 @@ impl AuditContract {
             .persistent()
             .set(&StorageKey::EntryCount, &(prev_count + 1));
 
-        Self::append_index(&env, &StorageKey::IndexByType(event_type, Self::bucket(seq)), seq);
+        Self::append_index(
+            &env,
+            &StorageKey::IndexByType(event_type, Self::bucket(seq)),
+            seq,
+        );
         Self::append_index(
             &env,
             &StorageKey::IndexByActor(entry.actor.clone(), Self::bucket(seq)),
@@ -269,10 +278,8 @@ impl AuditContract {
     /// `true` on match; `false` if any tampering is detected or the chain
     /// is empty.
     pub fn verify_integrity(env: Env, expected_head: BytesN<32>) -> bool {
-        let stored: Option<BytesN<32>> = env
-            .storage()
-            .persistent()
-            .get(&StorageKey::RollingChecksum);
+        let stored: Option<BytesN<32>> =
+            env.storage().persistent().get(&StorageKey::RollingChecksum);
         match stored {
             Some(h) => h == expected_head,
             None => false,
@@ -377,13 +384,10 @@ impl AuditContract {
         let mut new_first = first_seq;
 
         if age_limit > 0 {
-            let age_cutoff = if now > age_limit { now - age_limit } else { 0 };
+            let age_cutoff = now.saturating_sub(age_limit);
             let mut s = first_seq;
             while s <= next_seq {
-                let entry: Option<AuditLog> = env
-                    .storage()
-                    .persistent()
-                    .get(&StorageKey::Entry(s));
+                let entry: Option<AuditLog> = env.storage().persistent().get(&StorageKey::Entry(s));
                 if let Some(e) = entry {
                     if e.timestamp < age_cutoff {
                         new_first = s + 1;
@@ -410,9 +414,7 @@ impl AuditContract {
         // Pass 2 — actually remove.
         let mut s = first_seq;
         while s < new_first {
-            env.storage()
-                .persistent()
-                .remove(&StorageKey::Entry(s));
+            env.storage().persistent().remove(&StorageKey::Entry(s));
             s += 1;
         }
 
@@ -430,11 +432,7 @@ impl AuditContract {
             let mut s = new_first;
             while s <= next_seq {
                 let key = StorageKey::Entry(s);
-                if let Some(e) = env
-                    .storage()
-                    .persistent()
-                    .get::<StorageKey, AuditLog>(&key)
-                {
+                if let Some(e) = env.storage().persistent().get::<StorageKey, AuditLog>(&key) {
                     let payload = entry_payload(
                         &env,
                         e.seq,

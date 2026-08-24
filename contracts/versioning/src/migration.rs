@@ -139,10 +139,8 @@ pub fn execute_migration(
     let mut i: u32 = 0;
     while i < steps_count {
         let step = to_meta.migration_steps.get(i).unwrap();
-        env.events().publish(
-            (symbol_short!("MIG_STEP"), from_version, to_version),
-            step,
-        );
+        env.events()
+            .publish((symbol_short!("MIG_STEP"), from_version, to_version), step);
         i += 1;
     }
 
@@ -163,10 +161,9 @@ pub fn execute_migration(
     let now = env.ledger().timestamp();
     to_meta.status = VersionStatus::Active;
     to_meta.activated_at = now;
-    env.storage().persistent().set(
-        &VersionStorageKey::VersionMetadata(to_version),
-        &to_meta,
-    );
+    env.storage()
+        .persistent()
+        .set(&VersionStorageKey::VersionMetadata(to_version), &to_meta);
 
     // Update current version pointer.
     env.storage()
