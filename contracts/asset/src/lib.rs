@@ -183,9 +183,10 @@ impl AssetManagementContract {
         // Update portfolio assets list
         let mut assets = Self::get_portfolio_assets(env.clone(), portfolio_id.clone());
         assets.push_back(asset.clone());
-        env.storage()
-            .persistent()
-            .set(&AssetDataKey::PortfolioAssets(portfolio_id.clone()), &assets);
+        env.storage().persistent().set(
+            &AssetDataKey::PortfolioAssets(portfolio_id.clone()),
+            &assets,
+        );
 
         // Ensure portfolio is registered
         Self::ensure_portfolio_registered(&env, &portfolio_id);
@@ -249,15 +250,14 @@ impl AssetManagementContract {
                 break;
             }
         }
-        env.storage()
-            .persistent()
-            .set(&AssetDataKey::PortfolioAssets(portfolio_id.clone()), &assets);
+        env.storage().persistent().set(
+            &AssetDataKey::PortfolioAssets(portfolio_id.clone()),
+            &assets,
+        );
 
         // Emit event
-        env.events().publish(
-            (symbol_short!("ASSET_RM"), portfolio_id),
-            asset_symbol,
-        );
+        env.events()
+            .publish((symbol_short!("ASSET_RM"), portfolio_id), asset_symbol);
 
         Ok(symbol_short!("ok"))
     }
@@ -311,9 +311,10 @@ impl AssetManagementContract {
                 break;
             }
         }
-        env.storage()
-            .persistent()
-            .set(&AssetDataKey::PortfolioAssets(portfolio_id.clone()), &assets);
+        env.storage().persistent().set(
+            &AssetDataKey::PortfolioAssets(portfolio_id.clone()),
+            &assets,
+        );
 
         // Emit event
         env.events().publish(
@@ -384,9 +385,10 @@ impl AssetManagementContract {
                 break;
             }
         }
-        env.storage()
-            .persistent()
-            .set(&AssetDataKey::PortfolioAssets(portfolio_id.clone()), &assets);
+        env.storage().persistent().set(
+            &AssetDataKey::PortfolioAssets(portfolio_id.clone()),
+            &assets,
+        );
 
         // Emit event
         env.events().publish(
@@ -412,11 +414,7 @@ impl AssetManagementContract {
     /// # Returns
     ///
     /// `Some(Asset)` if found, `None` otherwise.
-    pub fn get_asset(
-        env: Env,
-        portfolio_id: Symbol,
-        asset_symbol: Symbol,
-    ) -> Option<Asset> {
+    pub fn get_asset(env: Env, portfolio_id: Symbol, asset_symbol: Symbol) -> Option<Asset> {
         let key = AssetDataKey::AssetEntry(portfolio_id, asset_symbol);
         env.storage().persistent().get(&key)
     }
@@ -535,11 +533,7 @@ impl AssetManagementContract {
     /// # Returns
     ///
     /// `Some(i128)` with the asset value, or `None` if asset or price not found.
-    pub fn get_asset_value(
-        env: Env,
-        portfolio_id: Symbol,
-        asset_symbol: Symbol,
-    ) -> Option<i128> {
+    pub fn get_asset_value(env: Env, portfolio_id: Symbol, asset_symbol: Symbol) -> Option<i128> {
         let asset = Self::get_asset(env.clone(), portfolio_id, asset_symbol.clone())?;
         let price_data = Self::get_asset_price(env, asset_symbol)?;
         Some(asset.balance * price_data.price)
@@ -586,15 +580,13 @@ impl AssetManagementContract {
     /// # Returns
     ///
     /// `Some(PortfolioSummary)` if portfolio exists, `None` otherwise.
-    pub fn get_portfolio_summary(
-        env: Env,
-        portfolio_id: Symbol,
-    ) -> Option<PortfolioSummary> {
+    pub fn get_portfolio_summary(env: Env, portfolio_id: Symbol) -> Option<PortfolioSummary> {
         let assets = Self::get_portfolio_assets(env.clone(), portfolio_id.clone());
-        if assets.is_empty() && !env
-            .storage()
-            .persistent()
-            .has(&AssetDataKey::PortfolioAssets(portfolio_id.clone()))
+        if assets.is_empty()
+            && !env
+                .storage()
+                .persistent()
+                .has(&AssetDataKey::PortfolioAssets(portfolio_id.clone()))
         {
             return None;
         }
@@ -872,12 +864,8 @@ mod tests {
 
         client.add_asset(&admin, &pid, &asset);
 
-        let result = client.update_asset_balance(
-            &admin,
-            &pid,
-            &symbol_short!("XLM"),
-            &(2000 * SCALE),
-        );
+        let result =
+            client.update_asset_balance(&admin, &pid, &symbol_short!("XLM"), &(2000 * SCALE));
         assert_eq!(result, symbol_short!("ok"));
 
         let updated = client.get_asset(&pid, &symbol_short!("XLM")).unwrap();
