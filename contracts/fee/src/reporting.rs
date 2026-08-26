@@ -59,7 +59,7 @@ pub fn build_fee_summary(records: &soroban_sdk::Vec<FeeRecord>) -> FeeSummary {
 
     FeeSummary {
         total_collected,
-        total_events: records.len() as u32,
+        total_events: records.len(),
         by_category,
         by_portfolio: soroban_sdk::Vec::new(env),
         total_discounts,
