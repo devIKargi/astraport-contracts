@@ -36,22 +36,23 @@ pub fn compute_raw_fee(
     match fee_type {
         FeeType::Flat => *amount_bps,
         FeeType::Percentage => {
-            base_amount
-                .checked_mul(*amount_bps)
-                .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, FeeError::ArithmeticOverflow))
-                / BPS_DENOM
+            base_amount.checked_mul(*amount_bps).unwrap_or_else(|| {
+                soroban_sdk::panic_with_error!(env, FeeError::ArithmeticOverflow)
+            }) / BPS_DENOM
         }
         FeeType::Tiered => calculate_tiered_fee(env, tiered_entries, base_amount),
     }
 }
 
 /// Compute the raw fee directly from a [`FeeStructure`].
-pub fn compute_fee_from_structure(
-    env: &Env,
-    fs: &FeeStructure,
-    base_amount: i128,
-) -> i128 {
-    compute_raw_fee(env, &fs.fee_type, &fs.amount_bps, &fs.tiered_entries, base_amount)
+pub fn compute_fee_from_structure(env: &Env, fs: &FeeStructure, base_amount: i128) -> i128 {
+    compute_raw_fee(
+        env,
+        &fs.fee_type,
+        &fs.amount_bps,
+        &fs.tiered_entries,
+        base_amount,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -62,11 +63,7 @@ pub fn compute_fee_from_structure(
 ///
 /// Tiers are evaluated from the highest threshold downward.  The first tier
 /// whose `threshold <= amount` wins.
-fn calculate_tiered_fee(
-    env: &Env,
-    tiers: &soroban_sdk::Vec<TierEntry>,
-    amount: i128,
-) -> i128 {
+fn calculate_tiered_fee(env: &Env, tiers: &soroban_sdk::Vec<TierEntry>, amount: i128) -> i128 {
     if tiers.is_empty() {
         return 0;
     }
@@ -83,10 +80,11 @@ fn calculate_tiered_fee(
     }
 
     match selected_bps {
-        Some(bps) => amount
-            .checked_mul(bps)
-            .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, FeeError::ArithmeticOverflow))
-            / BPS_DENOM,
+        Some(bps) => {
+            amount.checked_mul(bps).unwrap_or_else(|| {
+                soroban_sdk::panic_with_error!(env, FeeError::ArithmeticOverflow)
+            }) / BPS_DENOM
+        }
         None => 0,
     }
 }
@@ -101,7 +99,11 @@ fn calculate_tiered_fee(
 /// protocol never overcharges).
 pub fn clamp_fee(fee: i128, base: i128) -> i128 {
     let clamped = if fee < 0 { 0 } else { fee };
-    if clamped > base { base } else { clamped }
+    if clamped > base {
+        base
+    } else {
+        clamped
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +125,11 @@ pub fn apply_discount(env: &Env, fee: i128, discount_bps: i128, waived: bool) ->
         .checked_mul(BPS_DENOM - discount_bps)
         .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, FeeError::ArithmeticOverflow))
         / BPS_DENOM;
-    if discounted < 0 { 0 } else { discounted }
+    if discounted < 0 {
+        0
+    } else {
+        discounted
+    }
 }
 
 /// Apply a fee cap.  Returns `min(fee, cap)`.
@@ -260,7 +266,10 @@ mod tests {
             active: true,
             fee_cap: None,
         };
-        assert_eq!(validate_fee_structure(&fs), Err(FeeError::InvalidFeeConfiguration));
+        assert_eq!(
+            validate_fee_structure(&fs),
+            Err(FeeError::InvalidFeeConfiguration)
+        );
     }
 
     #[test]
@@ -274,7 +283,10 @@ mod tests {
             active: true,
             fee_cap: None,
         };
-        assert_eq!(validate_fee_structure(&fs), Err(FeeError::InvalidFeeConfiguration));
+        assert_eq!(
+            validate_fee_structure(&fs),
+            Err(FeeError::InvalidFeeConfiguration)
+        );
     }
 
     #[test]
@@ -288,7 +300,10 @@ mod tests {
             active: true,
             fee_cap: None,
         };
-        assert_eq!(validate_fee_structure(&fs), Err(FeeError::InvalidFeeConfiguration));
+        assert_eq!(
+            validate_fee_structure(&fs),
+            Err(FeeError::InvalidFeeConfiguration)
+        );
     }
 
     #[test]
@@ -302,6 +317,9 @@ mod tests {
             active: true,
             fee_cap: Some(-10),
         };
-        assert_eq!(validate_fee_structure(&fs), Err(FeeError::InvalidFeeConfiguration));
+        assert_eq!(
+            validate_fee_structure(&fs),
+            Err(FeeError::InvalidFeeConfiguration)
+        );
     }
 }

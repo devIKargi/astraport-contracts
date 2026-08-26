@@ -110,7 +110,9 @@ fn get_revenue_recipients(env: &Env) -> soroban_sdk::Vec<RevenueRecipient> {
 }
 
 fn put_revenue_recipients(env: &Env, r: &soroban_sdk::Vec<RevenueRecipient>) {
-    env.storage().persistent().set(&FeeDataKey::RevenueRecipients, r);
+    env.storage()
+        .persistent()
+        .set(&FeeDataKey::RevenueRecipients, r);
 }
 
 fn add_to_total_collected(env: &Env, amount: i128) {
@@ -272,8 +274,7 @@ impl FeeManagementContract {
             active,
             fee_cap,
         };
-        validate_fee_structure(&fs)
-            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
+        validate_fee_structure(&fs).unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         put_fee_structure(&env, &fs);
         add_fee_id(&env, &fee_id);
         symbol_short!("ok")
@@ -287,7 +288,16 @@ impl FeeManagementContract {
         tiered_entries: soroban_sdk::Vec<TierEntry>,
         active: bool,
     ) -> Symbol {
-        Self::set_fee_structure(env, fee_id, fee_type, amount_bps, tiered_entries, FeeCategory::Custom, active, None)
+        Self::set_fee_structure(
+            env,
+            fee_id,
+            fee_type,
+            amount_bps,
+            tiered_entries,
+            FeeCategory::Custom,
+            active,
+            None,
+        )
     }
 
     pub fn get_fee_structure(env: Env, fee_id: Symbol) -> Option<FeeStructure> {
@@ -343,10 +353,24 @@ impl FeeManagementContract {
         let raw = compute_fee_from_structure(&env, &fs, amount);
         let clamped = clamp_fee(raw, amount);
         let capped = apply_fee_cap(clamped, fs.fee_cap);
-        FeeCalculationResult { fee_id, category: fs.category, gross_amount: amount, raw_fee: raw, discount_bps: 0, fee_cap: fs.fee_cap, fee_amount: capped, waived: false }
+        FeeCalculationResult {
+            fee_id,
+            category: fs.category,
+            gross_amount: amount,
+            raw_fee: raw,
+            discount_bps: 0,
+            fee_cap: fs.fee_cap,
+            fee_amount: capped,
+            waived: false,
+        }
     }
 
-    pub fn calculate_portfolio_fee(env: Env, portfolio_id: Symbol, fallback_fee_id: Symbol, amount: i128) -> FeeCalculationResult {
+    pub fn calculate_portfolio_fee(
+        env: Env,
+        portfolio_id: Symbol,
+        fallback_fee_id: Symbol,
+        amount: i128,
+    ) -> FeeCalculationResult {
         let fee_id = get_portfolio_fee_id(&env, &portfolio_id).unwrap_or(fallback_fee_id);
         let fs = get_fee_structure(&env, &fee_id)
             .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
@@ -358,33 +382,85 @@ impl FeeManagementContract {
         let capped = apply_fee_cap(clamped, fs.fee_cap);
         let (discount_bps, waived) = resolve_waiver_for_portfolio(&env, &portfolio_id);
         let final_fee = apply_discount(&env, capped, discount_bps, waived);
-        FeeCalculationResult { fee_id, category: fs.category, gross_amount: amount, raw_fee: raw, discount_bps, fee_cap: fs.fee_cap, fee_amount: final_fee, waived }
+        FeeCalculationResult {
+            fee_id,
+            category: fs.category,
+            gross_amount: amount,
+            raw_fee: raw,
+            discount_bps,
+            fee_cap: fs.fee_cap,
+            fee_amount: final_fee,
+            waived,
+        }
     }
 
-    pub fn estimate_fee(env: Env, fee_id: Symbol, portfolio_id: Option<Symbol>, amount: i128) -> FeeCalculationResult {
-        let resolved_id = match &portfolio_id { Some(p) => get_portfolio_fee_id(&env, p).unwrap_or(fee_id), None => fee_id };
+    pub fn estimate_fee(
+        env: Env,
+        fee_id: Symbol,
+        portfolio_id: Option<Symbol>,
+        amount: i128,
+    ) -> FeeCalculationResult {
+        let resolved_id = match &portfolio_id {
+            Some(p) => get_portfolio_fee_id(&env, p).unwrap_or(fee_id),
+            None => fee_id,
+        };
         let fs = get_fee_structure(&env, &resolved_id)
             .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
-        if !fs.active { soroban_sdk::panic_with_error!(&env, FeeError::FeeInactive); }
+        if !fs.active {
+            soroban_sdk::panic_with_error!(&env, FeeError::FeeInactive);
+        }
         let raw = compute_fee_from_structure(&env, &fs, amount);
         let clamped = clamp_fee(raw, amount);
         let capped = apply_fee_cap(clamped, fs.fee_cap);
-        let (discount_bps, waived) = match &portfolio_id { Some(p) => resolve_waiver_for_portfolio(&env, p), None => (0, false) };
+        let (discount_bps, waived) = match &portfolio_id {
+            Some(p) => resolve_waiver_for_portfolio(&env, p),
+            None => (0, false),
+        };
         let final_fee = apply_discount(&env, capped, discount_bps, waived);
-        FeeCalculationResult { fee_id: resolved_id, category: fs.category, gross_amount: amount, raw_fee: raw, discount_bps, fee_cap: fs.fee_cap, fee_amount: final_fee, waived }
+        FeeCalculationResult {
+            fee_id: resolved_id,
+            category: fs.category,
+            gross_amount: amount,
+            raw_fee: raw,
+            discount_bps,
+            fee_cap: fs.fee_cap,
+            fee_amount: final_fee,
+            waived,
+        }
     }
 
-    pub fn collect_fee(env: Env, caller: Address, fee_id: Symbol, portfolio_id: Symbol, base_amount: i128) -> i128 {
+    pub fn collect_fee(
+        env: Env,
+        caller: Address,
+        fee_id: Symbol,
+        portfolio_id: Symbol,
+        base_amount: i128,
+    ) -> i128 {
         caller.require_auth();
         let fs = get_fee_structure(&env, &fee_id)
             .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
-        if !fs.active { soroban_sdk::panic_with_error!(&env, FeeError::FeeInactive); }
+        if !fs.active {
+            soroban_sdk::panic_with_error!(&env, FeeError::FeeInactive);
+        }
         let raw = compute_fee_from_structure(&env, &fs, base_amount);
         let clamped = clamp_fee(raw, base_amount);
         let capped = apply_fee_cap(clamped, fs.fee_cap);
         let (discount_bps, waived) = resolve_waiver_for_collect(&env, &caller, &portfolio_id);
         let final_fee = apply_discount(&env, capped, discount_bps, waived);
-        append_fee_record(&env, &FeeRecord { fee_id: fee_id.clone(), category: fs.category, portfolio_id: portfolio_id.clone(), base_amount, fee_amount: final_fee, discount_bps, waived, timestamp: env.ledger().timestamp(), collector: caller });
+        append_fee_record(
+            &env,
+            &FeeRecord {
+                fee_id: fee_id.clone(),
+                category: fs.category,
+                portfolio_id: portfolio_id.clone(),
+                base_amount,
+                fee_amount: final_fee,
+                discount_bps,
+                waived,
+                timestamp: env.ledger().timestamp(),
+                collector: caller,
+            },
+        );
         add_to_total_collected(&env, final_fee);
         add_to_category_total(&env, &fs.category, final_fee);
         add_to_portfolio_total(&env, &portfolio_id, final_fee);
@@ -392,63 +468,139 @@ impl FeeManagementContract {
         final_fee
     }
 
-    pub fn collect_yield_fee(env: Env, caller: Address, portfolio_id: Symbol, yield_amount: i128) -> i128 {
+    pub fn collect_yield_fee(
+        env: Env,
+        caller: Address,
+        portfolio_id: Symbol,
+        yield_amount: i128,
+    ) -> i128 {
         let fee_id = symbol_short!("YIELD");
-        let _ = get_fee_structure(&env, &fee_id).unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
+        let _ = get_fee_structure(&env, &fee_id)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
         Self::collect_fee(env, caller, fee_id, portfolio_id, yield_amount)
     }
 
-    pub fn collect_management_fee(env: Env, caller: Address, portfolio_id: Symbol, aum: i128) -> i128 {
+    pub fn collect_management_fee(
+        env: Env,
+        caller: Address,
+        portfolio_id: Symbol,
+        aum: i128,
+    ) -> i128 {
         let fee_id = symbol_short!("MGMT");
-        let _ = get_fee_structure(&env, &fee_id).unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
+        let _ = get_fee_structure(&env, &fee_id)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
         Self::collect_fee(env, caller, fee_id, portfolio_id, aum)
     }
 
-    pub fn collect_rebalance_fee(env: Env, caller: Address, portfolio_id: Symbol, trade_amount: i128) -> i128 {
+    pub fn collect_rebalance_fee(
+        env: Env,
+        caller: Address,
+        portfolio_id: Symbol,
+        trade_amount: i128,
+    ) -> i128 {
         let fee_id = symbol_short!("REBAL");
-        let _ = get_fee_structure(&env, &fee_id).unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
+        let _ = get_fee_structure(&env, &fee_id)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
         Self::collect_fee(env, caller, fee_id, portfolio_id, trade_amount)
     }
 
-    pub fn collect_trading_fee(env: Env, caller: Address, portfolio_id: Symbol, trade_amount: i128) -> i128 {
+    pub fn collect_trading_fee(
+        env: Env,
+        caller: Address,
+        portfolio_id: Symbol,
+        trade_amount: i128,
+    ) -> i128 {
         let fee_id = symbol_short!("TRADE");
-        let _ = get_fee_structure(&env, &fee_id).unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
+        let _ = get_fee_structure(&env, &fee_id)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
         Self::collect_fee(env, caller, fee_id, portfolio_id, trade_amount)
     }
 
-    pub fn set_fee_waiver(env: Env, address: Option<Address>, portfolio_id: Option<Symbol>, discount_bps: i128, waived: bool, label: Option<Symbol>, expires_at: u64) -> Symbol {
+    pub fn set_fee_waiver(
+        env: Env,
+        address: Option<Address>,
+        portfolio_id: Option<Symbol>,
+        discount_bps: i128,
+        waived: bool,
+        label: Option<Symbol>,
+        expires_at: u64,
+    ) -> Symbol {
         get_admin(&env).require_auth();
-        if !(0..=BPS_DENOM).contains(&discount_bps) { soroban_sdk::panic_with_error!(&env, FeeError::InvalidFeeConfiguration); }
+        if !(0..=BPS_DENOM).contains(&discount_bps) {
+            soroban_sdk::panic_with_error!(&env, FeeError::InvalidFeeConfiguration);
+        }
         let has_address = address.is_some();
         let has_portfolio = portfolio_id.is_some();
-        let addr = match address { Some(a) => a, None => get_admin(&env) };
-        let pid = match portfolio_id { Some(p) => p, None => sym_empty() };
+        let addr = match address {
+            Some(a) => a,
+            None => get_admin(&env),
+        };
+        let pid = match portfolio_id {
+            Some(p) => p,
+            None => sym_empty(),
+        };
         let lbl = label.unwrap_or(sym_empty());
-        let w = FeeWaiver { address: addr, has_address, portfolio_id: pid, has_portfolio, discount_bps, waived, label: lbl, expires_at };
+        let w = FeeWaiver {
+            address: addr,
+            has_address,
+            portfolio_id: pid,
+            has_portfolio,
+            discount_bps,
+            waived,
+            label: lbl,
+            expires_at,
+        };
         let mut waivers = get_fee_waivers(&env);
         let mut found = false;
         let mut idx: u32 = 0;
         while idx < waivers.len() {
             let e = waivers.get(idx).unwrap();
-            if waiver_same_target(&e, &w) { waivers.set(idx, w.clone()); found = true; break; }
+            if waiver_same_target(&e, &w) {
+                waivers.set(idx, w.clone());
+                found = true;
+                break;
+            }
             idx += 1;
         }
-        if !found { waivers.push_back(w); }
+        if !found {
+            waivers.push_back(w);
+        }
         put_fee_waivers(&env, &waivers);
         symbol_short!("ok")
     }
 
-    pub fn remove_fee_waiver(env: Env, address: Option<Address>, portfolio_id: Option<Symbol>) -> Symbol {
+    pub fn remove_fee_waiver(
+        env: Env,
+        address: Option<Address>,
+        portfolio_id: Option<Symbol>,
+    ) -> Symbol {
         get_admin(&env).require_auth();
         let has_address = address.is_some();
         let has_portfolio = portfolio_id.is_some();
-        let addr = match address { Some(a) => a, None => get_admin(&env) };
-        let pid = match portfolio_id { Some(p) => p, None => sym_empty() };
+        let addr = match address {
+            Some(a) => a,
+            None => get_admin(&env),
+        };
+        let pid = match portfolio_id {
+            Some(p) => p,
+            None => sym_empty(),
+        };
         let waivers = get_fee_waivers(&env);
         let mut new_waivers = soroban_sdk::Vec::new(&env);
         for w in waivers.iter() {
-            let template = FeeWaiver { address: addr.clone(), has_address, portfolio_id: pid.clone(), has_portfolio, discount_bps: 0, waived: false, label: sym_empty(), expires_at: 0 };
-            if !waiver_same_target(&w, &template) { new_waivers.push_back(w); }
+            let template = FeeWaiver {
+                address: addr.clone(),
+                has_address,
+                portfolio_id: pid.clone(),
+                has_portfolio,
+                discount_bps: 0,
+                waived: false,
+                label: sym_empty(),
+                expires_at: 0,
+            };
+            if !waiver_same_target(&w, &template) {
+                new_waivers.push_back(w);
+            }
         }
         put_fee_waivers(&env, &new_waivers);
         symbol_short!("ok")
@@ -458,9 +610,14 @@ impl FeeManagementContract {
         get_fee_waivers(&env)
     }
 
-    pub fn set_revenue_recipients(env: Env, recipients: soroban_sdk::Vec<RevenueRecipient>) -> Symbol {
+    pub fn set_revenue_recipients(
+        env: Env,
+        recipients: soroban_sdk::Vec<RevenueRecipient>,
+    ) -> Symbol {
         get_admin(&env).require_auth();
-        if recipients.len() > MAX_RECIPIENTS { soroban_sdk::panic_with_error!(&env, FeeError::TooManyRecipients); }
+        if recipients.len() > MAX_RECIPIENTS {
+            soroban_sdk::panic_with_error!(&env, FeeError::TooManyRecipients);
+        }
         put_revenue_recipients(&env, &recipients);
         symbol_short!("ok")
     }
@@ -474,44 +631,73 @@ impl FeeManagementContract {
     }
 
     pub fn get_total_collected(env: Env) -> i128 {
-        env.storage().persistent().get(&FeeDataKey::TotalCollected).unwrap_or(0)
+        env.storage()
+            .persistent()
+            .get(&FeeDataKey::TotalCollected)
+            .unwrap_or(0)
     }
 
     pub fn get_category_total(env: Env, category: FeeCategory) -> i128 {
-        env.storage().persistent().get(&FeeDataKey::CategoryTotal(category)).unwrap_or(0)
+        env.storage()
+            .persistent()
+            .get(&FeeDataKey::CategoryTotal(category))
+            .unwrap_or(0)
     }
 
     pub fn get_portfolio_total(env: Env, portfolio_id: Symbol) -> i128 {
-        env.storage().persistent().get(&FeeDataKey::PortfolioTotal(portfolio_id)).unwrap_or(0)
+        env.storage()
+            .persistent()
+            .get(&FeeDataKey::PortfolioTotal(portfolio_id))
+            .unwrap_or(0)
     }
 
     pub fn get_fee_history(env: Env, max: u32) -> soroban_sdk::Vec<FeeRecord> {
         let h = get_fee_history(&env);
-        if max == 0 || h.len() <= max { h } else { h.slice(h.len() - max..) }
+        if max == 0 || h.len() <= max {
+            h
+        } else {
+            h.slice(h.len() - max..)
+        }
     }
 
     pub fn get_fee_history_count(env: Env) -> u32 {
         get_fee_history(&env).len()
     }
 
-    pub fn get_fee_history_by_portfolio(env: Env, portfolio_id: Symbol, max: u32) -> soroban_sdk::Vec<FeeRecord> {
+    pub fn get_fee_history_by_portfolio(
+        env: Env,
+        portfolio_id: Symbol,
+        max: u32,
+    ) -> soroban_sdk::Vec<FeeRecord> {
         let h = get_fee_history(&env);
         let mut filtered = soroban_sdk::Vec::new(&env);
         for i in 0..h.len() {
             let r = h.get(i).unwrap();
-            if r.portfolio_id == portfolio_id { filtered.push_back(r); }
-            if max > 0 && filtered.len() >= max { break; }
+            if r.portfolio_id == portfolio_id {
+                filtered.push_back(r);
+            }
+            if max > 0 && filtered.len() >= max {
+                break;
+            }
         }
         filtered
     }
 
-    pub fn get_fee_history_by_category(env: Env, category: FeeCategory, max: u32) -> soroban_sdk::Vec<FeeRecord> {
+    pub fn get_fee_history_by_category(
+        env: Env,
+        category: FeeCategory,
+        max: u32,
+    ) -> soroban_sdk::Vec<FeeRecord> {
         let h = get_fee_history(&env);
         let mut filtered = soroban_sdk::Vec::new(&env);
         for i in 0..h.len() {
             let r = h.get(i).unwrap();
-            if r.category == category { filtered.push_back(r); }
-            if max > 0 && filtered.len() >= max { break; }
+            if r.category == category {
+                filtered.push_back(r);
+            }
+            if max > 0 && filtered.len() >= max {
+                break;
+            }
         }
         filtered
     }
@@ -540,7 +726,6 @@ mod tests {
     fn test_initialize() {
         let (_env, client, admin) = setup();
         assert_eq!(client.get_admin(), admin);
-
     }
 
     #[test]
@@ -561,7 +746,13 @@ mod tests {
     fn test_set_get_fee_structure() {
         let (_env, client, _admin) = setup();
         let fid = symbol_short!("TEST");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &250, &soroban_sdk::Vec::new(&_env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &250,
+            &soroban_sdk::Vec::new(&_env),
+            &true,
+        );
         let fs = client.get_fee_structure(&fid).unwrap();
         assert_eq!(fs.fee_type, FeeType::Percentage);
         assert_eq!(fs.amount_bps, 250);
@@ -572,7 +763,15 @@ mod tests {
     fn test_set_fee_structure_with_category_and_cap() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("REBAL");
-        client.set_fee_structure(&fid, &FeeType::Percentage, &200, &soroban_sdk::Vec::new(&env), &FeeCategory::Rebalancing, &true, &Some(50_000));
+        client.set_fee_structure(
+            &fid,
+            &FeeType::Percentage,
+            &200,
+            &soroban_sdk::Vec::new(&env),
+            &FeeCategory::Rebalancing,
+            &true,
+            &Some(50_000),
+        );
         let fs = client.get_fee_structure(&fid).unwrap();
         assert_eq!(fs.category, FeeCategory::Rebalancing);
         assert_eq!(fs.fee_cap, Some(50_000));
@@ -582,7 +781,13 @@ mod tests {
     fn test_fee_calculation_percentage() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("PCT");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &250, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &250,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let result = client.calculate_fee(&fid, &10_000_000);
         assert_eq!(result.fee_amount, 250_000);
     }
@@ -591,7 +796,13 @@ mod tests {
     fn test_fee_calculation_flat() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("FLAT");
-        client.set_fee_structure_simple(&fid, &FeeType::Flat, &1_000, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Flat,
+            &1_000,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let r1 = client.calculate_fee(&fid, &500);
         assert_eq!(r1.fee_amount, 500); // clamped
         let r2 = client.calculate_fee(&fid, &5_000);
@@ -602,9 +813,18 @@ mod tests {
     fn test_fee_calculation_tiered() {
         let (env, client, _admin) = setup();
         let mut tiers = soroban_sdk::Vec::new(&env);
-        tiers.push_back(TierEntry { threshold: 0, fee_bps: 50 });
-        tiers.push_back(TierEntry { threshold: 10_000_000, fee_bps: 30 });
-        tiers.push_back(TierEntry { threshold: 100_000_000, fee_bps: 15 });
+        tiers.push_back(TierEntry {
+            threshold: 0,
+            fee_bps: 50,
+        });
+        tiers.push_back(TierEntry {
+            threshold: 10_000_000,
+            fee_bps: 30,
+        });
+        tiers.push_back(TierEntry {
+            threshold: 100_000_000,
+            fee_bps: 15,
+        });
         let fid = symbol_short!("TIER");
         client.set_fee_structure_simple(&fid, &FeeType::Tiered, &0, &tiers, &true);
         assert_eq!(client.calculate_fee(&fid, &5_000_000).fee_amount, 25_000);
@@ -616,7 +836,15 @@ mod tests {
     fn test_fee_calculation_with_cap() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("CAP");
-        client.set_fee_structure(&fid, &FeeType::Percentage, &200, &soroban_sdk::Vec::new(&env), &FeeCategory::Trading, &true, &Some(50_000));
+        client.set_fee_structure(
+            &fid,
+            &FeeType::Percentage,
+            &200,
+            &soroban_sdk::Vec::new(&env),
+            &FeeCategory::Trading,
+            &true,
+            &Some(50_000),
+        );
         let result = client.calculate_fee(&fid, &100_000_000);
         assert_eq!(result.fee_amount, 50_000);
         assert_eq!(result.fee_cap, Some(50_000));
@@ -627,8 +855,20 @@ mod tests {
         let (env, client, _admin) = setup();
         let f1 = symbol_short!("F1");
         let f2 = symbol_short!("F2");
-        client.set_fee_structure_simple(&f1, &FeeType::Percentage, &100, &soroban_sdk::Vec::new(&env), &true);
-        client.set_fee_structure_simple(&f2, &FeeType::Flat, &500, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &f1,
+            &FeeType::Percentage,
+            &100,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
+        client.set_fee_structure_simple(
+            &f2,
+            &FeeType::Flat,
+            &500,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let list = client.list_fee_structures();
         assert_eq!(list.len(), 2);
         client.set_fee_active(&f1, &false);
@@ -640,7 +880,13 @@ mod tests {
     fn test_set_get_remove_portfolio_fee() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("PF");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &100, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &100,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let pid = symbol_short!("PORT1");
         client.set_portfolio_fee(&pid, &fid);
         assert_eq!(client.get_portfolio_fee(&pid), Some(fid.clone()));
@@ -652,7 +898,13 @@ mod tests {
     fn test_calculate_portfolio_fee() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("PF");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &200, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &200,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let pid = symbol_short!("PORT1");
         client.set_portfolio_fee(&pid, &fid);
         let result = client.calculate_portfolio_fee(&pid, &symbol_short!("FALL"), &10_000_000);
@@ -663,7 +915,13 @@ mod tests {
     fn test_waiver_discount() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("WD");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &200, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &200,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let pid = symbol_short!("WDP");
         client.set_portfolio_fee(&pid, &fid);
         client.set_fee_waiver(&None, &Some(pid.clone()), &5000, &false, &None, &0);
@@ -676,7 +934,13 @@ mod tests {
     fn test_waiver_full_waive() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("FW");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &200, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &200,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let pid = symbol_short!("FWD");
         client.set_portfolio_fee(&pid, &fid);
         client.set_fee_waiver(&None, &Some(pid.clone()), &0, &true, &None, &0);
@@ -689,7 +953,13 @@ mod tests {
     fn test_collect_fee_updates_totals() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("COL");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &250, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &250,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let pid = symbol_short!("P1");
         let caller = Address::generate(&env);
         let fee = client.collect_fee(&caller, &fid, &pid, &10_000_000);
@@ -703,7 +973,13 @@ mod tests {
     fn test_collect_multiple_fees() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("CM");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &200, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &200,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let p1 = symbol_short!("P1");
         let p2 = symbol_short!("P2");
         let caller = Address::generate(&env);
@@ -721,8 +997,16 @@ mod tests {
         let t1 = Address::generate(&env);
         let t2 = Address::generate(&env);
         let mut recipients = soroban_sdk::Vec::new(&env);
-        recipients.push_back(RevenueRecipient { address: t1.clone(), share_numerator: 70, label: symbol_short!("treasury") });
-        recipients.push_back(RevenueRecipient { address: t2.clone(), share_numerator: 30, label: symbol_short!("dev") });
+        recipients.push_back(RevenueRecipient {
+            address: t1.clone(),
+            share_numerator: 70,
+            label: symbol_short!("treasury"),
+        });
+        recipients.push_back(RevenueRecipient {
+            address: t2.clone(),
+            share_numerator: 30,
+            label: symbol_short!("dev"),
+        });
         client.set_revenue_recipients(&recipients);
         let dist = client.distribute_revenue_amount(&251_000);
         assert_eq!(dist.len(), 2);
@@ -741,7 +1025,13 @@ mod tests {
     fn test_fee_history_by_portfolio() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("FH");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &100, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &100,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let p1 = symbol_short!("P1");
         let p2 = symbol_short!("P2");
         let caller = Address::generate(&env);
@@ -756,7 +1046,13 @@ mod tests {
     fn test_fee_history_limit() {
         let (env, client, _admin) = setup();
         let fid = symbol_short!("FL");
-        client.set_fee_structure_simple(&fid, &FeeType::Percentage, &100, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &fid,
+            &FeeType::Percentage,
+            &100,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let pid = symbol_short!("P1");
         let caller = Address::generate(&env);
         for _ in 0..5 {
@@ -770,7 +1066,13 @@ mod tests {
     fn test_zero_fee_portfolio() {
         let (env, client, _admin) = setup();
         let zero_id = symbol_short!("ZERO");
-        client.set_fee_structure_simple(&zero_id, &FeeType::Percentage, &0, &soroban_sdk::Vec::new(&env), &true);
+        client.set_fee_structure_simple(
+            &zero_id,
+            &FeeType::Percentage,
+            &0,
+            &soroban_sdk::Vec::new(&env),
+            &true,
+        );
         let grant = symbol_short!("GRANT");
         client.set_portfolio_fee(&grant, &zero_id);
         let result = client.calculate_portfolio_fee(&grant, &symbol_short!("X"), &10_000_000);
