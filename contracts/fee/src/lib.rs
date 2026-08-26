@@ -1,113 +1,48 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
+//! # AstraPort Fee Management Contract
+//!
+//! Flexible fee system supporting multiple fee models (flat, percentage, tiered)
+//! with transparent accounting, revenue distribution to stakeholders, and
+//! comprehensive reporting.
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Symbol};
+
+pub mod engine;
+pub mod records;
+pub mod reporting;
+
+use crate::engine::{
+    apply_discount, apply_fee_cap, clamp_fee, compute_fee_from_structure, validate_fee_structure,
 };
+use crate::records::*;
 
-const ADMIN: Symbol = symbol_short!("ADMIN");
-const FEE_IDS: Symbol = symbol_short!("FEE_IDS");
-const FEE_STRT: Symbol = symbol_short!("FEE_STRT");
-const PORT_FEE: Symbol = symbol_short!("PORT_FEE");
-const FEE_HIST: Symbol = symbol_short!("FEE_HIST");
-const FEE_WVR: Symbol = symbol_short!("FEE_WVR");
-const REV_LEDG: Symbol = symbol_short!("REV_LEDG");
-const TOT_COLL: Symbol = symbol_short!("TOT_COLL");
-const MAX_HISTORY: u32 = 100;
-const MAX_RECIPIENTS: u32 = 20;
-const BPS_DENOM: i128 = 10_000;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[contracterror]
-pub enum Error {
-    FeeNotFound = 1,
-    FeeInactive = 2,
-    InvalidFeeConfiguration = 3,
-    ArithmeticOverflow = 4,
-    FeeWaiverNotFound = 5,
-    TooManyRecipients = 6,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[contracttype]
-pub enum FeeType {
-    Flat,
-    Percentage,
-    Tiered,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[contracttype]
-pub struct TierEntry {
-    pub threshold: i128,
-    pub fee_bps: i128,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[contracttype]
-pub struct FeeStructure {
-    pub fee_id: Symbol,
-    pub fee_type: FeeType,
-    pub amount_bps: i128,
-    pub tiered_entries: soroban_sdk::Vec<TierEntry>,
-    pub active: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[contracttype]
-pub struct RevenueRecipient {
-    pub address: Address,
-    pub share_numerator: u32,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[contracttype]
-pub struct FeeRecord {
-    pub fee_id: Symbol,
-    pub portfolio_id: Symbol,
-    pub amount: i128,
-    pub calculated_fee: i128,
-    pub timestamp: u64,
-    pub beneficiary: Address,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[contracttype]
-pub struct FeeWaiver {
-    pub address: Option<Address>,
-    pub portfolio_id: Option<Symbol>,
-    pub discount_bps: i128,
-    pub waived: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[contracttype]
-pub struct FeeCalculationResult {
-    pub fee_id: Symbol,
-    pub gross_amount: i128,
-    pub discount_bps: i128,
-    pub fee_amount: i128,
-    pub waived: bool,
-}
+// ---------------------------------------------------------------------------
+// Storage helpers
+// ---------------------------------------------------------------------------
 
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&ADMIN).unwrap()
+    env.storage().persistent().get(&FeeDataKey::Admin).unwrap()
 }
+
 fn put_admin(env: &Env, admin: &Address) {
-    env.storage().instance().set(&ADMIN, admin);
+    env.storage().persistent().set(&FeeDataKey::Admin, admin);
 }
+
 fn put_fee_structure(env: &Env, fs: &FeeStructure) {
-    let key = (&FEE_STRT, &fs.fee_id);
+    let key = FeeDataKey::FeeStructure(fs.fee_id.clone());
     env.storage().persistent().set(&key, fs);
 }
+
 fn get_fee_structure(env: &Env, fee_id: &Symbol) -> Option<FeeStructure> {
-    let key = (&FEE_STRT, fee_id);
+    let key = FeeDataKey::FeeStructure(fee_id.clone());
     env.storage().persistent().get(&key)
 }
+
 fn add_fee_id(env: &Env, fee_id: &Symbol) {
     let mut list: soroban_sdk::Vec<Symbol> = env
         .storage()
         .persistent()
-        .get(&FEE_IDS)
+        .get(&FeeDataKey::FeeIds)
         .unwrap_or_else(|| soroban_sdk::Vec::new(env));
     for existing in list.iter() {
         if existing == *fee_id {
@@ -115,75 +50,202 @@ fn add_fee_id(env: &Env, fee_id: &Symbol) {
         }
     }
     list.push_back(fee_id.clone());
-    env.storage().persistent().set(&FEE_IDS, &list);
+    env.storage().persistent().set(&FeeDataKey::FeeIds, &list);
 }
+
 fn list_all_fee_ids(env: &Env) -> soroban_sdk::Vec<Symbol> {
     env.storage()
         .persistent()
-        .get(&FEE_IDS)
+        .get(&FeeDataKey::FeeIds)
         .unwrap_or_else(|| soroban_sdk::Vec::new(env))
 }
+
 fn get_portfolio_fee_id(env: &Env, pid: &Symbol) -> Option<Symbol> {
-    let key = (&PORT_FEE, pid);
+    let key = FeeDataKey::PortfolioFee(pid.clone());
     env.storage().persistent().get(&key)
 }
+
 fn set_portfolio_fee_id(env: &Env, pid: &Symbol, fid: &Symbol) {
-    let key = (&PORT_FEE, pid);
+    let key = FeeDataKey::PortfolioFee(pid.clone());
     env.storage().persistent().set(&key, fid);
 }
+
 fn remove_portfolio_fee_id(env: &Env, pid: &Symbol) {
-    let key = (&PORT_FEE, pid);
+    let key = FeeDataKey::PortfolioFee(pid.clone());
     env.storage().persistent().remove(&key);
 }
+
 fn get_fee_history(env: &Env) -> soroban_sdk::Vec<FeeRecord> {
     env.storage()
         .persistent()
-        .get(&FEE_HIST)
+        .get(&FeeDataKey::FeeHistory)
         .unwrap_or_else(|| soroban_sdk::Vec::new(env))
 }
+
 fn append_fee_record(env: &Env, record: &FeeRecord) {
     let mut h = get_fee_history(env);
     if h.len() >= MAX_HISTORY {
         h = h.slice(1..);
     }
     h.push_back(record.clone());
-    env.storage().persistent().set(&FEE_HIST, &h);
+    env.storage().persistent().set(&FeeDataKey::FeeHistory, &h);
 }
+
 fn get_fee_waivers(env: &Env) -> soroban_sdk::Vec<FeeWaiver> {
     env.storage()
         .persistent()
-        .get(&FEE_WVR)
+        .get(&FeeDataKey::FeeWaivers)
         .unwrap_or_else(|| soroban_sdk::Vec::new(env))
 }
+
 fn put_fee_waivers(env: &Env, w: &soroban_sdk::Vec<FeeWaiver>) {
-    env.storage().persistent().set(&FEE_WVR, w);
+    env.storage().persistent().set(&FeeDataKey::FeeWaivers, w);
 }
+
 fn get_revenue_recipients(env: &Env) -> soroban_sdk::Vec<RevenueRecipient> {
     env.storage()
         .persistent()
-        .get(&REV_LEDG)
+        .get(&FeeDataKey::RevenueRecipients)
         .unwrap_or_else(|| soroban_sdk::Vec::new(env))
 }
+
 fn put_revenue_recipients(env: &Env, r: &soroban_sdk::Vec<RevenueRecipient>) {
-    env.storage().persistent().set(&REV_LEDG, r);
+    env.storage().persistent().set(&FeeDataKey::RevenueRecipients, r);
 }
+
 fn add_to_total_collected(env: &Env, amount: i128) {
-    let cur: i128 = env.storage().instance().get(&TOT_COLL).unwrap_or(0);
-    env.storage().instance().set(&TOT_COLL, &(cur + amount));
+    let cur: i128 = env
+        .storage()
+        .persistent()
+        .get(&FeeDataKey::TotalCollected)
+        .unwrap_or(0);
+    env.storage()
+        .persistent()
+        .set(&FeeDataKey::TotalCollected, &(cur + amount));
 }
+
+fn add_to_category_total(env: &Env, category: &FeeCategory, amount: i128) {
+    let key = FeeDataKey::CategoryTotal(*category);
+    let cur: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    env.storage().persistent().set(&key, &(cur + amount));
+}
+
+fn add_to_portfolio_total(env: &Env, portfolio_id: &Symbol, amount: i128) {
+    let key = FeeDataKey::PortfolioTotal(portfolio_id.clone());
+    let cur: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+    env.storage().persistent().set(&key, &(cur + amount));
+}
+
+// ---------------------------------------------------------------------------
+// Waiver matching
+// ---------------------------------------------------------------------------
+
+fn waiver_is_active(env: &Env, w: &FeeWaiver) -> bool {
+    if w.expires_at == 0 {
+        return true;
+    }
+    env.ledger().timestamp() < w.expires_at
+}
+
+fn waiver_same_target(a: &FeeWaiver, b: &FeeWaiver) -> bool {
+    if a.has_address != b.has_address {
+        return false;
+    }
+    if a.has_address && a.address != b.address {
+        return false;
+    }
+    if a.has_portfolio != b.has_portfolio {
+        return false;
+    }
+    if a.has_portfolio && a.portfolio_id != b.portfolio_id {
+        return false;
+    }
+    true
+}
+
+fn resolve_waiver_for_portfolio(env: &Env, pid: &Symbol) -> (i128, bool) {
+    for w in get_fee_waivers(env).iter() {
+        if !waiver_is_active(env, &w) {
+            continue;
+        }
+        if w.has_portfolio && w.portfolio_id == *pid {
+            return (w.discount_bps, w.waived);
+        }
+    }
+    (0, false)
+}
+
+fn resolve_waiver_for_collect(env: &Env, addr: &Address, pid: &Symbol) -> (i128, bool) {
+    for w in get_fee_waivers(env).iter() {
+        if !waiver_is_active(env, &w) {
+            continue;
+        }
+        if w.has_address && w.address == *addr {
+            return (w.discount_bps, w.waived);
+        }
+        if w.has_portfolio && w.portfolio_id == *pid {
+            return (w.discount_bps, w.waived);
+        }
+    }
+    (0, false)
+}
+
+// ---------------------------------------------------------------------------
+// Revenue distribution
+// ---------------------------------------------------------------------------
+
+fn distribute_revenue(env: &Env, amount: i128) -> soroban_sdk::Vec<(Address, i128)> {
+    let recips = get_revenue_recipients(env);
+    let mut r = soroban_sdk::Vec::new(env);
+    if recips.is_empty() || amount <= 0 {
+        return r;
+    }
+    let mut total_shares: i128 = 0;
+    for rp in recips.iter() {
+        total_shares += rp.share_numerator as i128;
+    }
+    if total_shares == 0 {
+        return r;
+    }
+    let mut distributed: i128 = 0;
+    for rp in recips.iter() {
+        let share = (rp.share_numerator as i128)
+            .checked_mul(amount)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, FeeError::ArithmeticOverflow))
+            / total_shares;
+        distributed += share;
+        r.push_back((rp.address.clone(), share));
+    }
+    let remainder = amount - distributed;
+    if remainder > 0 && !r.is_empty() {
+        let (first_addr, first_share) = r.get(0).unwrap();
+        r.set(0, (first_addr, first_share + remainder));
+    }
+    r
+}
+
+// ===========================================================================
+// Contract
+// ===========================================================================
 
 #[contract]
 pub struct FeeManagementContract;
 
 #[contractimpl]
 impl FeeManagementContract {
-    pub fn initialize(env: Env, admin: Address) -> Symbol {
+    pub fn initialize(env: Env, admin: Address) -> Result<Symbol, FeeError> {
+        let storage = env.storage().persistent();
+        if storage.has(&FeeDataKey::Admin) {
+            return Err(FeeError::AlreadyInitialized);
+        }
         put_admin(&env, &admin);
-        symbol_short!("ok")
+        Ok(symbol_short!("ok"))
     }
+
     pub fn get_admin(env: Env) -> Address {
         get_admin(&env)
     }
+
     pub fn transfer_admin(env: Env, new_admin: Address) -> Symbol {
         get_admin(&env).require_auth();
         put_admin(&env, &new_admin);
@@ -196,48 +258,60 @@ impl FeeManagementContract {
         fee_type: FeeType,
         amount_bps: i128,
         tiered_entries: soroban_sdk::Vec<TierEntry>,
+        category: FeeCategory,
         active: bool,
+        fee_cap: Option<i128>,
     ) -> Symbol {
         get_admin(&env).require_auth();
-        match fee_type {
-            FeeType::Percentage => {
-                if !(0..=BPS_DENOM).contains(&amount_bps) {
-                    soroban_sdk::panic_with_error!(&env, Error::InvalidFeeConfiguration);
-                }
-            }
-            FeeType::Flat => {
-                if amount_bps < 0 {
-                    soroban_sdk::panic_with_error!(&env, Error::InvalidFeeConfiguration);
-                }
-            }
-            FeeType::Tiered => {
-                if tiered_entries.is_empty() {
-                    soroban_sdk::panic_with_error!(&env, Error::InvalidFeeConfiguration);
-                }
-            }
-        }
         let fs = FeeStructure {
             fee_id: fee_id.clone(),
             fee_type,
             amount_bps,
             tiered_entries,
+            category,
             active,
+            fee_cap,
         };
+        validate_fee_structure(&fs)
+            .unwrap_or_else(|e| soroban_sdk::panic_with_error!(&env, e));
         put_fee_structure(&env, &fs);
         add_fee_id(&env, &fee_id);
         symbol_short!("ok")
     }
+
+    pub fn set_fee_structure_simple(
+        env: Env,
+        fee_id: Symbol,
+        fee_type: FeeType,
+        amount_bps: i128,
+        tiered_entries: soroban_sdk::Vec<TierEntry>,
+        active: bool,
+    ) -> Symbol {
+        Self::set_fee_structure(env, fee_id, fee_type, amount_bps, tiered_entries, FeeCategory::Custom, active, None)
+    }
+
     pub fn get_fee_structure(env: Env, fee_id: Symbol) -> Option<FeeStructure> {
         get_fee_structure(&env, &fee_id)
     }
+
     pub fn list_fee_structures(env: Env) -> soroban_sdk::Vec<Symbol> {
         list_all_fee_ids(&env)
     }
+
     pub fn set_fee_active(env: Env, fee_id: Symbol, active: bool) -> Symbol {
         get_admin(&env).require_auth();
         let mut fs = get_fee_structure(&env, &fee_id)
-            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, Error::FeeNotFound));
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
         fs.active = active;
+        put_fee_structure(&env, &fs);
+        symbol_short!("ok")
+    }
+
+    pub fn set_fee_cap(env: Env, fee_id: Symbol, cap: Option<i128>) -> Symbol {
+        get_admin(&env).require_auth();
+        let mut fs = get_fee_structure(&env, &fee_id)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
+        fs.fee_cap = cap;
         put_fee_structure(&env, &fs);
         symbol_short!("ok")
     }
@@ -245,13 +319,15 @@ impl FeeManagementContract {
     pub fn set_portfolio_fee(env: Env, portfolio_id: Symbol, fee_id: Symbol) -> Symbol {
         get_admin(&env).require_auth();
         let _ = get_fee_structure(&env, &fee_id)
-            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, Error::FeeNotFound));
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, FeeError::FeeNotFound));
         set_portfolio_fee_id(&env, &portfolio_id, &fee_id);
         symbol_short!("ok")
     }
+
     pub fn get_portfolio_fee(env: Env, portfolio_id: Symbol) -> Option<Symbol> {
         get_portfolio_fee_id(&env, &portfolio_id)
     }
+
     pub fn remove_portfolio_fee(env: Env, portfolio_id: Symbol) -> Symbol {
         get_admin(&env).require_auth();
         remove_portfolio_fee_id(&env, &portfolio_id);
